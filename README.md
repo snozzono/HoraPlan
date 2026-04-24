@@ -1,16 +1,59 @@
-# React + Vite
+# HoraPlan
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Priority-based study scheduler. Toma tus tareas, calcula prioridades según ansiedad, horas estimadas y deadline, y genera un plan de estudio distribuido para el día.
 
-Currently, two official plugins are available:
+**Live:** [planner.snozz.xyz](https://planner.snozz.xyz)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+**Planner**
+- Agrega tareas con horas estimadas, nivel de ansiedad y deadline
+- Genera un plan distribuido proporcionalmente por prioridad
+- Plan editable: ajusta los minutos asignados por tarea
+- Persiste tareas y plan al recargar
+- Historial de los últimos 10 planes generados
+- Descarga el plan como PNG o compártelo directo desde el móvil
+- Modo claro / oscuro
 
-## Expanding the ESLint configuration
+**Pomodoro**
+- Convierte el plan generado en sesiones pomodoro
+- Modos: Estándar (25/5/15), Bestia (sin descansos), Custom
+- Timer con countdown, controles de navegación y barra de progreso
+- Notificaciones al cambiar de bloque
+- Título de pestaña con timer en tiempo real
+- Historial accesible desde el modo pomodoro
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+---
+
+## Stack
+
+- [React 19](https://react.dev)
+- [Tailwind CSS v4](https://tailwindcss.com)
+- [Vite](https://vitejs.dev)
+
+---
+
+## Desarrollo local
+
+```bash
+npm install
+npm run dev
+```
+
+---
+
+## Algoritmo de prioridad
+
+```
+prioridad = (ansiedad × horas × ln(horas + 1)) / T
+```
+
+donde `T` es el tiempo restante hasta el deadline en horas. Las tareas vencidas reciben prioridad `∞`.
+
+El tiempo disponible se distribuye proporcionalmente entre las tareas según su prioridad, respetando el máximo de horas estimadas por tarea.
+
+---
+
+Made by [snozz](https://github.com/snozz1001) — 2026

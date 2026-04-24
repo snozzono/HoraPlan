@@ -63,10 +63,14 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
   const isWork = block?.type === "work";
   const pct    = block ? ((block.duration - timeLeft) / block.duration) * 100 : 0;
 
+  const [notifPermission, setNotifPermission] = useState(
+    () => ("Notification" in window ? Notification.permission : "granted")
+  );
+
   // Pedir permiso de notificaciones al montar
   useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
+      Notification.requestPermission().then(p => setNotifPermission(p));
     }
   }, []);
 
@@ -149,7 +153,14 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
 
       {/* Modo */}
       <section className={`border rounded-2xl ${th.surface} shadow-sm overflow-hidden transition-all duration-500 ${running ? "max-h-0 p-0 opacity-0 border-transparent" : `max-h-[32rem] p-5 opacity-100 ${th.border}`}`}>
-        <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest mb-3`}>Modo</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest`}>Modo</h2>
+          {notifPermission !== "granted" && (
+            <span className="text-xs font-mono text-orange-400 text-right leading-tight max-w-[60%]">
+              permite las notificaciones para que la alarma funcione
+            </span>
+          )}
+        </div>
         <div>
         <div className="flex gap-2 mb-4">
           {[["standard","Estándar"],["beast","⚡ Bestia"],["custom","Custom"]].map(([k, l]) => (

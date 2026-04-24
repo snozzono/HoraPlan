@@ -63,6 +63,13 @@ export default function TaskCard({ task, index, onDelete, onEdit, isEditing, th 
           <span className={urgencyColor}>
             {isOverdue ? "vencida" : `${hoursLeft.toFixed(1)}h restantes`}
           </span>
+          {task.deadline && (
+            <span>
+              ({new Date(task.deadline).toLocaleDateString("es-CL", { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" })}
+              {" "}
+              {new Date(task.deadline).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })})
+            </span>
+          )}
         </div>
 
         {/* Barra de ansiedad */}
