@@ -9,7 +9,8 @@ import { THEMES } from "./theme/themes";
 import { calculatePlan, randomTask } from "./lib/scheduler";
 import SliderField     from "./components/SliderField";
 import AnxietyBar      from "./components/AnxietyBar";
-import HowItWorksCard  from "./components/HowItWorksCard";
+import HowItWorksCard     from "./components/HowItWorksCard";
+import HowItWorksPomodoro from "./components/HowItWorksPomodoro";
 import TaskCard        from "./components/TaskCard";
 import PlanResult      from "./components/PlanResult";
 import PomodoroView   from "./components/PomodoroView";
@@ -157,17 +158,6 @@ export default function Planner() {
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <header className={`border-b ${th.border} px-4 py-4 max-w-2xl mx-auto flex items-center justify-between`}>
-        <div>
-          <h1
-            onClick={() => setPomodoroMode(false)}
-            className={`display-font text-2xl font-extrabold ${th.textAccent} tracking-tight leading-none sm:cursor-pointer`}
-          >
-            PLANNER
-          </h1>
-          <p className={`hidden sm:block text-xs ${th.textMuted} mt-0.5 font-mono`}>
-            priority-based study scheduler
-          </p>
-        </div>
         <div className="flex items-center gap-2">
           <img
             src="/favicon.svg"
@@ -175,6 +165,19 @@ export default function Planner() {
             onClick={() => setPomodoroMode(false)}
             className="sm:hidden w-7 h-7 cursor-pointer"
           />
+          <div className="hidden sm:block">
+            <h1
+              onClick={() => setPomodoroMode(false)}
+              className={`display-font text-2xl font-extrabold ${th.textAccent} tracking-tight leading-none sm:cursor-pointer`}
+            >
+              PLANNER
+            </h1>
+            <p className={`text-xs ${th.textMuted} mt-0.5 font-mono`}>
+              priority-based study scheduler
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setDark(v => !v)}
             className={`text-xs font-mono transition-colors border ${th.toggleBorder} ${th.textToggle} px-3 py-1.5 rounded-lg`}
@@ -203,9 +206,9 @@ export default function Planner() {
       {/* ── Main ──────────────────────────────────────────────────────────── */}
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
-        {pomodoroMode ? <PomodoroView plan={plan} planHistory={planHistory} onLoadPlan={p => setPlan(p)} onDeleteEntry={id => setPlanHistory(h => h.filter(e => e.id !== id))} th={th} /> : <>
+        {showHow && (pomodoroMode ? <HowItWorksPomodoro th={th} /> : <HowItWorksCard th={th} />)}
 
-        {showHow && <HowItWorksCard th={th} />}
+        {pomodoroMode ? <PomodoroView plan={plan} planHistory={planHistory} onLoadPlan={p => setPlan(p)} onDeleteEntry={id => setPlanHistory(h => h.filter(e => e.id !== id))} th={th} /> : <>
 
         {/* Nueva tarea */}
         <section className={`border ${th.border} rounded-2xl ${th.surface} p-5 shadow-sm`}>
