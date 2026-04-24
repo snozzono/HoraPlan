@@ -59,6 +59,13 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
   const stateRef = useRef({ seq: [], cur: 0, timeLeft: 0 });
   stateRef.current = { seq, cur, timeLeft };
 
+  const swRef = useRef(null);
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.ready.then(reg => { swRef.current = reg; });
+    }
+  }, []);
+
   const block  = seq[cur];
   const isWork = block?.type === "work";
   const pct    = block ? ((block.duration - timeLeft) / block.duration) * 100 : 0;
@@ -93,10 +100,13 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
   function notify(block) {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     const isWork = block.type === "work";
-    new Notification(isWork ? "¡A trabajar! 🍅" : "¡Descansa! ☕", {
-      body: isWork ? block.task : BLOCK_LABELS[block.type],
-      icon: "/favicon.svg",
-    });
+    const title  = isWork ? "¡A trabajar! 🍅" : "¡Descansa! ☕";
+    const opts   = { body: isWork ? block.task : BLOCK_LABELS[block.type], icon: "/favicon.svg" };
+    if (swRef.current) {
+      swRef.current.showNotification(title, opts);
+    } else {
+      new Notification(title, opts);
+    }
   }
 
   useEffect(() => {
@@ -112,7 +122,9 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
           return s[next].duration;
         }
         if ("Notification" in window && Notification.permission === "granted") {
-          new Notification("¡Plan completado! 🎉", { icon: "/favicon.svg" });
+          const opts = { body: "Buen trabajo 💪", icon: "/favicon.svg" };
+          if (swRef.current) swRef.current.showNotification("¡Plan completado! 🎉", opts);
+          else new Notification("¡Plan completado! 🎉", opts);
         }
         setRunning(false);
         return 0;
@@ -156,9 +168,12 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
         <div className="flex items-center justify-between mb-3">
           <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest`}>Modo</h2>
           {notifPermission !== "granted" && (
-            <span className="text-xs font-mono text-orange-400 text-right leading-tight max-w-[60%]">
-              permite las notificaciones para que la alarma funcione
-            </span>
+            <button
+              onClick={() => Notification.requestPermission().then(p => setNotifPermission(p))}
+              className="text-xs font-mono text-orange-400 text-right leading-tight max-w-[60%] hover:text-orange-300 transition-colors"
+            >
+              permite las notificaciones →
+            </button>
           )}
         </div>
         <div>
