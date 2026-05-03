@@ -5,6 +5,8 @@
  * Los tokens visuales viven en theme/themes.js.
  */
 import { useState, useEffect } from "react";
+import { DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { THEMES } from "./theme/themes";
 import { calculatePlan, randomTask } from "./lib/scheduler";
 import SliderField     from "./components/SliderField";
@@ -38,7 +40,10 @@ export default function Planner() {
   const th = dark ? THEMES.dark : THEMES.light;
 
   const [tasks, setTasks] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("tasks")) || []; }
+    try {
+      const stored = JSON.parse(localStorage.getItem("tasks")) || [];
+      return stored.map((t, i) => t.id ? t : { ...t, id: Date.now() + i });
+    }
     catch { return []; }
   });
   const [form, setForm] = useState({ name: "", hours: 2, anxiety: 50, deadline: "" });
@@ -80,7 +85,7 @@ export default function Planner() {
       setTasks(p => p.map((t, i) => i === editIndex ? { ...form } : t));
       setEditIndex(null);
     } else {
-      setTasks(p => [...p, { ...form }]);
+      setTasks(p => [...p, { ...form, id: Date.now() }]);
     }
     setForm({ name: "", hours: 2, anxiety: 50, deadline: "" });
     setMsg("");
@@ -126,6 +131,21 @@ export default function Planner() {
   function loadTest() {
     setTasks(p => [...p, randomTask(), randomTask(), randomTask()]);
     setMsg("🧪 3 tareas aleatorias cargadas");
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  function handleDragEnd({ active, over }) {
+    if (!over || active.id === over.id) return;
+    setTasks(p => {
+      const oldIdx = p.findIndex(t => t.id === active.id);
+      const newIdx = p.findIndex(t => t.id === over.id);
+      return arrayMove(p, oldIdx, newIdx);
+    });
   }
 
   function clearAll() {
@@ -282,11 +302,15 @@ export default function Planner() {
                 limpiar todo
               </button>
             </div>
-            <div className="space-y-2">
-              {tasks.map((task, i) => (
-                <TaskCard key={i} task={task} index={i} onDelete={deleteTask} onEdit={editTask} isEditing={editIndex === i} th={th} />
-              ))}
-            </div>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {tasks.map((task, i) => (
+                    <TaskCard key={task.id} task={task} index={i} onDelete={deleteTask} onEdit={editTask} isEditing={editIndex === i} th={th} />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
           </section>
         )}
 

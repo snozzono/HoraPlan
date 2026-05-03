@@ -1,22 +1,17 @@
-/**
- * TaskCard.jsx
- * Tarjeta individual de tarea con indicadores de urgencia y barra de ansiedad.
- *
- * Estados visuales:
- *   - Normal:   borde gris
- *   - Urgente:  borde naranja  (menos de 4h hasta deadline)
- *   - Vencida:  borde rojo     (deadline ya pasó)
- *
- * Props:
- *   task    {object}   - { name, hours, anxiety, deadline }
- *   index   {number}   - Índice en el array de tareas (para eliminar)
- *   onDelete {function} - Callback que recibe el índice a eliminar
- *   th      {object}   - Tokens del tema activo (de themes.js)
- */
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { hoursUntil } from "../lib/scheduler";
 import AnxietyBar from "./AnxietyBar";
 
 export default function TaskCard({ task, index, onDelete, onEdit, isEditing, th }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: task.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
   const hoursLeft = hoursUntil(task.deadline);
   const isUrgent  = hoursLeft < 4;
   const isOverdue = hoursLeft <= 0;
@@ -34,7 +29,22 @@ export default function TaskCard({ task, index, onDelete, onEdit, isEditing, th 
       : th.taskNormal;
 
   return (
-    <div className={`group flex items-start gap-3 p-3 rounded-xl border transition-all duration-200 ${cardBase} ${isEditing ? "border-amber-400/70" : "hover:border-amber-400/40"}`}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-start gap-3 p-3 rounded-xl border transition-colors duration-200 ${cardBase} ${
+        isEditing ? "border-amber-400/70" : "hover:border-amber-400/40"
+      } ${isDragging ? "opacity-50 shadow-lg" : ""}`}
+    >
+      {/* Drag handle */}
+      <button
+        {...attributes}
+        {...listeners}
+        className={`${th.textMuted} cursor-grab active:cursor-grabbing touch-none flex-shrink-0 mt-1 select-none text-base leading-none`}
+        aria-label="Arrastrar tarea"
+        tabIndex={-1}
+      >⠿</button>
+
       <div className="flex-1 min-w-0">
 
         {/* Nombre + badges */}
@@ -83,11 +93,11 @@ export default function TaskCard({ task, index, onDelete, onEdit, isEditing, th 
 
       </div>
 
-      {/* Botón eliminar (visible en hover) */}
+      {/* Eliminar */}
       <button
         onClick={() => onDelete(index)}
         aria-label={`Eliminar tarea ${task.name}`}
-        className={`opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity ${th.deleteBtn} text-lg leading-none mt-0.5 flex-shrink-0`}
+        className={`${th.deleteBtn} text-lg leading-none mt-0.5 flex-shrink-0`}
       >
         ×
       </button>

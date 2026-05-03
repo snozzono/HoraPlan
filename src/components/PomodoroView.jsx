@@ -48,6 +48,32 @@ function fmt(s) {
   return `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 }
 
+function playSound(type) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const beep = (freq, t0, dur) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = "sine"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0, ctx.currentTime + t0);
+      g.gain.linearRampToValueAtTime(0.45, ctx.currentTime + t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t0 + dur);
+      o.start(ctx.currentTime + t0);
+      o.stop(ctx.currentTime + t0 + dur + 0.05);
+    };
+    if (type === "work") {
+      beep(523, 0, 0.12); beep(659, 0.15, 0.12); beep(784, 0.30, 0.30);
+    } else if (type === "break") {
+      beep(659, 0, 0.20); beep(523, 0.25, 0.40);
+    } else {
+      beep(523, 0, 0.10); beep(659, 0.12, 0.10); beep(784, 0.24, 0.10); beep(1047, 0.38, 0.50);
+    }
+  } catch {}
+}
+
 export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDeleteEntry, th }) {
   const [preset, setPreset]     = useState("standard");
   const [cfg, setCfg]           = useState({ preset: "standard", ...PRESETS.standard });
@@ -55,9 +81,12 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
   const [cur, setCur]           = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
   const [running, setRunning]   = useState(false);
+  const [freeMode, setFreeMode] = useState(false);
 
-  const stateRef = useRef({ seq: [], cur: 0, timeLeft: 0 });
+  const stateRef   = useRef({ seq: [], cur: 0, timeLeft: 0 });
   stateRef.current = { seq, cur, timeLeft };
+
+  const blockEndRef = useRef(null);
 
   const swRef = useRef(null);
   useEffect(() => {
@@ -74,7 +103,6 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
     () => ("Notification" in window ? Notification.permission : "granted")
   );
 
-  // Pedir permiso de notificaciones al montar
   useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().then(p => setNotifPermission(p));
@@ -95,63 +123,106 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
     setCur(0);
     setRunning(false);
     setTimeLeft(s[0]?.duration ?? 0);
+    blockEndRef.current = null;
   }, [plan, cfg]);
 
-  function notify(block) {
+  function notify(b) {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
-    const isWork = block.type === "work";
-    const title  = isWork ? "¡A trabajar! 🍅" : "¡Descansa! ☕";
-    const opts   = { body: isWork ? block.task : BLOCK_LABELS[block.type], icon: "/favicon.svg" };
-    if (swRef.current) {
-      swRef.current.showNotification(title, opts);
-    } else {
-      new Notification(title, opts);
-    }
+    const isW  = b.type === "work";
+    const title = isW ? "¡A trabajar! 🍅" : "¡Descansa! ☕";
+    const opts  = { body: isW ? b.task : BLOCK_LABELS[b.type], icon: "/favicon.svg" };
+    if (swRef.current) swRef.current.showNotification(title, opts);
+    else new Notification(title, opts);
   }
 
+  function scheduleSwNotif(b, delayMs) {
+    if (!swRef.current?.active) return;
+    const isW = b.type === "work";
+    swRef.current.active.postMessage({
+      type:  "SCHEDULE_NOTIFICATION",
+      delay: delayMs,
+      title: isW ? "¡A trabajar! 🍅" : "¡Descansa! ☕",
+      body:  isW ? b.task : BLOCK_LABELS[b.type],
+    });
+  }
+
+  // Fija blockEndRef al iniciar y libera al pausar
+  useEffect(() => {
+    if (running) {
+      blockEndRef.current = Date.now() + stateRef.current.timeLeft * 1000;
+      const b = stateRef.current.seq[stateRef.current.cur];
+      if (b) scheduleSwNotif(b, stateRef.current.timeLeft * 1000);
+    } else {
+      blockEndRef.current = null;
+    }
+  }, [running]);
+
+  // Sincroniza al volver de background (teléfono bloqueado)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !blockEndRef.current) return;
+      const rem = Math.ceil((blockEndRef.current - Date.now()) / 1000);
+      if (rem > 0) setTimeLeft(rem);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
+  // Timer con timestamps absolutos
   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => {
-      setTimeLeft(t => {
-        if (t > 1) return t - 1;
-        const { seq: s, cur: c } = stateRef.current;
-        const next = c + 1;
-        if (next < s.length) {
-          notify(s[next]);
-          setCur(next);
-          return s[next].duration;
-        }
+      if (!blockEndRef.current) return;
+      const rem = Math.ceil((blockEndRef.current - Date.now()) / 1000);
+      if (rem > 0) { setTimeLeft(rem); return; }
+
+      const { seq: s, cur: c } = stateRef.current;
+      const next = c + 1;
+      if (next < s.length) {
+        playSound(s[next].type === "work" ? "work" : "break");
+        notify(s[next]);
+        setCur(next);
+        blockEndRef.current = Date.now() + s[next].duration * 1000;
+        setTimeLeft(s[next].duration);
+        scheduleSwNotif(s[next], s[next].duration * 1000);
+      } else {
+        playSound("done");
         if ("Notification" in window && Notification.permission === "granted") {
           const opts = { body: "Buen trabajo 💪", icon: "/favicon.svg" };
           if (swRef.current) swRef.current.showNotification("¡Plan completado! 🎉", opts);
           else new Notification("¡Plan completado! 🎉", opts);
         }
         setRunning(false);
-        return 0;
-      });
-    }, 1000);
+        blockEndRef.current = null;
+        setTimeLeft(0);
+      }
+    }, 500);
     return () => clearInterval(id);
   }, [running]);
 
+  // Espacio = play/pause (solo cuando está en modo plan)
+  useEffect(() => {
+    if (!plan.length || freeMode) return;
+    const onKey = (e) => {
+      if (e.code !== "Space") return;
+      const tag = e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+      setRunning(v => !v);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [freeMode, plan.length]);
+
   if (!plan.length) {
-    return (
-      <div className="space-y-4">
-        <div className={`border ${th.border} rounded-2xl ${th.surface} p-8 text-center`}>
-          <p className={`text-sm font-mono ${th.textMuted}`}>
-            genera un plan primero para usar el pomodoro
-          </p>
-        </div>
-        {planHistory.length > 0 && (
-          <HistorialSection planHistory={planHistory} onLoadPlan={onLoadPlan} onDeleteEntry={onDeleteEntry} th={th} />
-        )}
-      </div>
-    );
+    return <FreePomodoro th={th} />;
   }
 
   function goTo(i) {
     setCur(i);
     setTimeLeft(seq[i].duration);
     setRunning(false);
+    blockEndRef.current = null;
   }
 
   function changePreset(p) {
@@ -162,6 +233,23 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
 
   return (
     <div className="space-y-4">
+
+      {/* Tabs: Plan / Libre */}
+      <div className="flex gap-2">
+        {[["plan", "🍅 Plan"], ["libre", "⚡ Libre"]].map(([val, label]) => (
+          <button key={val} onClick={() => setFreeMode(val === "libre")}
+            className={`flex-1 text-xs font-mono py-2 rounded-xl border transition-colors ${
+              freeMode === (val === "libre")
+                ? "bg-amber-400 text-zinc-950 border-amber-400 font-bold"
+                : `${th.toggleBorder} ${th.textToggle}`
+            }`}
+          >{label}</button>
+        ))}
+      </div>
+
+      {freeMode ? (
+        <FreePomodoro th={th} />
+      ) : <>
 
       {/* Modo */}
       <section className={`border rounded-2xl ${th.surface} shadow-sm overflow-hidden transition-all duration-500 ${running ? "max-h-0 p-0 opacity-0 border-transparent" : `max-h-[32rem] p-5 opacity-100 ${th.border}`}`}>
@@ -225,22 +313,11 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
           {block?.task ?? "—"}
         </p>
 
-        <div className="font-mono text-7xl font-bold text-amber-400 tabular-nums tracking-widest mb-5">
+        <div className="font-mono text-7xl font-bold text-amber-400 tabular-nums tracking-widest mb-6">
           {fmt(timeLeft)}
         </div>
 
-        <div className={`w-full h-1.5 ${th.planBarBg} rounded-full overflow-hidden mb-6`}>
-          <div
-            className={`h-full rounded-full transition-all duration-1000 ${
-              isWork
-                ? "bg-gradient-to-r from-amber-500 to-amber-300"
-                : "bg-gradient-to-r from-emerald-500 to-emerald-300"
-            }`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-
-        <div className="flex justify-center gap-3">
+        <div className="flex justify-center gap-3 mb-5">
           <button onClick={() => goTo(Math.max(0, cur - 1))} disabled={cur === 0}
             className={`w-10 h-10 rounded-xl border ${th.toggleBorder} ${th.textToggle} disabled:opacity-30 transition-colors`}>
             ◀
@@ -254,6 +331,8 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
             ▶
           </button>
         </div>
+
+        <p className={`text-xs font-mono ${th.textMuted} mt-2`}>espacio = play/pause</p>
       </section>
 
       {/* Secuencia */}
@@ -271,11 +350,216 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
         </div>
       </section>
 
+      </> }
+
       {/* Historial */}
-      {planHistory.length > 0 && (
+      {!freeMode && planHistory.length > 0 && (
         <HistorialSection planHistory={planHistory} onLoadPlan={onLoadPlan} onDeleteEntry={onDeleteEntry} th={th} />
       )}
 
+      {/* Dev tools — plan */}
+      {!freeMode && (
+        <section className={`border ${th.border} rounded-2xl ${th.surfaceDev} p-4`}>
+          <div className="flex items-center gap-2 mb-3">
+            <span className={`text-xs font-mono ${th.textMuted} uppercase tracking-widest`}>Dev tools</span>
+            <div className={`flex-1 h-px ${th.divider}`} />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setTimeLeft(5); if (running) blockEndRef.current = Date.now() + 5000; }}
+              className={`flex-1 border ${th.borderDevBtn} active:scale-95 ${th.textDevBtn} rounded-xl py-2 text-xs font-mono transition-all`}
+            >⚡ 5s</button>
+            <button
+              onClick={() => playSound("done")}
+              className={`flex-1 border ${th.borderDevBtn} active:scale-95 ${th.textDevBtn} rounded-xl py-2 text-xs font-mono transition-all`}
+            >🔊 sonido</button>
+            <button
+              onClick={() => notify(block ?? { type: "work", task: "test" })}
+              className={`flex-1 border ${th.borderDevBtn} active:scale-95 ${th.textDevBtn} rounded-xl py-2 text-xs font-mono transition-all`}
+            >🔔 notif</button>
+          </div>
+        </section>
+      )}
+
+    </div>
+  );
+}
+
+function FreePomodoro({ th }) {
+  const [name, setName]         = useState("");
+  const [duration, setDuration] = useState(25);
+  const [timeLeft, setTimeLeft] = useState(25 * 60);
+  const [running, setRunning]   = useState(false);
+  const [done, setDone]         = useState(false);
+  const [sessions, setSessions] = useState(0);
+
+  const blockEndRef = useRef(null);
+  const nameRef     = useRef("");
+  nameRef.current   = name;
+
+  useEffect(() => {
+    if (!running) {
+      setTimeLeft(duration * 60);
+      setDone(false);
+      blockEndRef.current = null;
+    }
+  }, [duration]);
+
+  // Fija blockEndRef al iniciar
+  useEffect(() => {
+    if (running) {
+      blockEndRef.current = Date.now() + timeLeft * 1000;
+    } else {
+      blockEndRef.current = null;
+    }
+  }, [running]);
+
+  // Sincroniza al volver de background
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !blockEndRef.current) return;
+      const rem = Math.ceil((blockEndRef.current - Date.now()) / 1000);
+      if (rem > 0) setTimeLeft(rem);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
+  // Espacio = play/pause
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.code !== "Space") return;
+      const tag = e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+      setRunning(v => !v);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Timer con timestamps absolutos
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => {
+      if (!blockEndRef.current) return;
+      const rem = Math.ceil((blockEndRef.current - Date.now()) / 1000);
+      if (rem > 0) {
+        const label = nameRef.current.trim() || "Pomodoro libre";
+        document.title = `🍅 ${fmt(rem)} — ${label}`;
+        setTimeLeft(rem);
+        return;
+      }
+      const label = nameRef.current.trim() || "Pomodoro libre";
+      playSound("done");
+      setSessions(s => s + 1);
+      setRunning(false);
+      setDone(true);
+      blockEndRef.current = null;
+      setTimeLeft(0);
+      document.title = `✅ ¡Listo! — ${label}`;
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("¡Sesión completada! 🎉", { body: label, icon: "/favicon.svg" });
+      }
+    }, 500);
+    return () => clearInterval(id);
+  }, [running]);
+
+  function reset() {
+    setRunning(false);
+    setTimeLeft(duration * 60);
+    setDone(false);
+    blockEndRef.current = null;
+  }
+
+  const totalSec = duration * 60;
+  const pct = totalSec > 0
+    ? ((totalSec - (timeLeft > 0 ? timeLeft : 0)) / totalSec) * 100
+    : 0;
+
+  return (
+    <div className="space-y-4">
+      <section className={`border ${th.planBorder} rounded-2xl ${th.planBg} p-5`}>
+      {sessions > 0 && (
+        <p className={`text-xs font-mono ${th.textMuted} text-center mb-3`}>
+          {"🍅".repeat(Math.min(sessions, 8))}{sessions > 8 ? ` ×${sessions}` : ""} completado{sessions > 1 ? "s" : ""}
+        </p>
+      )}
+
+      <input
+        type="text"
+        placeholder="¿En qué vas a trabajar? (opcional)"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        disabled={running}
+        className={`w-full mb-4 border ${th.inputBorder} ${th.inputBg} ${th.inputText} ${th.inputPlaceholder} ${th.inputFocus} rounded-xl px-4 py-2.5 text-sm outline-none transition-colors font-mono disabled:opacity-50`}
+      />
+
+      <div className="mb-5">
+        <div className="flex justify-between mb-1">
+          <span className={`text-xs font-mono ${th.textLabel}`}>Duración</span>
+          <span className={`text-xs font-mono ${th.textAccent}`}>{duration} min</span>
+        </div>
+        <input
+          type="range" min={5} max={120} step={5}
+          value={duration}
+          onChange={e => { if (!running) setDuration(Number(e.target.value)); }}
+          disabled={running}
+          className="w-full accent-amber-400 disabled:opacity-50"
+        />
+      </div>
+
+      {done && (
+        <p className="text-sm font-mono text-emerald-400 text-center mb-3">¡Sesión completada! 🎉</p>
+      )}
+
+      <div className="font-mono text-7xl font-bold text-amber-400 tabular-nums tracking-widest text-center mb-6">
+        {fmt(timeLeft)}
+      </div>
+
+      <div className="flex justify-center gap-3 mb-5">
+        <button
+          onClick={reset}
+          className={`w-10 h-10 rounded-xl border ${th.toggleBorder} ${th.textToggle} transition-colors text-lg`}
+        >↺</button>
+        <button
+          onClick={() => { setDone(false); setRunning(v => !v); }}
+          className="w-14 h-10 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 text-zinc-950 font-bold text-xl transition-all"
+        >
+          {running ? "⏸" : "▶"}
+        </button>
+      </div>
+
+      <div className={`w-full h-1.5 ${th.planBarBg} rounded-full overflow-hidden mt-1`}>
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      <p className={`text-xs font-mono ${th.textMuted} text-center mt-3`}>espacio = play/pause</p>
+      </section>
+
+      <section className={`border ${th.border} rounded-2xl ${th.surfaceDev} p-4`}>
+        <div className="flex items-center gap-2 mb-3">
+          <span className={`text-xs font-mono ${th.textMuted} uppercase tracking-widest`}>Dev tools</span>
+          <div className={`flex-1 h-px ${th.divider}`} />
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setTimeLeft(5); if (running) blockEndRef.current = Date.now() + 5000; }}
+            className={`flex-1 border ${th.borderDevBtn} active:scale-95 ${th.textDevBtn} rounded-xl py-2 text-xs font-mono transition-all`}
+          >⚡ 5s</button>
+          <button
+            onClick={() => playSound("done")}
+            className={`flex-1 border ${th.borderDevBtn} active:scale-95 ${th.textDevBtn} rounded-xl py-2 text-xs font-mono transition-all`}
+          >🔊 sonido</button>
+          <button
+            onClick={() => { if ("Notification" in window && Notification.permission === "granted") new Notification("¡Sesión completada! 🎉", { body: nameRef.current || "Pomodoro libre", icon: "/favicon.svg" }); }}
+            className={`flex-1 border ${th.borderDevBtn} active:scale-95 ${th.textDevBtn} rounded-xl py-2 text-xs font-mono transition-all`}
+          >🔔 notif</button>
+        </div>
+      </section>
     </div>
   );
 }
