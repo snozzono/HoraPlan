@@ -47,28 +47,40 @@ export function roundMinutes(minutes) {
  */
 export function calculatePlan(taskList, availableHours) {
   const weighted = taskList.map(t => ({ ...t, priority: calculatePriority(t) }));
-  const total = weighted.reduce((s, t) => s + t.priority, 0);
-  let remaining = availableHours * 60;
-  const result = [];
+  const overdue  = weighted.filter(t => t.priority === Infinity);
+  const normal   = weighted.filter(t => t.priority !== Infinity).sort((a, b) => b.priority - a.priority);
+  const normalTotal = normal.reduce((s, t) => s + t.priority, 0);
 
-  weighted.sort((a, b) => b.priority - a.priority).forEach(t => {
-    if (remaining <= 0) return;
-    let share = (t.priority / total) * (availableHours * 60);
-    let minutes = Math.min(share, t.hours * 60);
-    minutes = roundMinutes(minutes);
-    if (minutes > 0) {
-      result.push({
-        name: t.name,
-        minutes,
-        priority: t.priority,
-        anxiety: t.anxiety,
-        hours: t.hours,
-        deadline: t.deadline,
-        timeLeft: hoursUntil(t.deadline).toFixed(1),
-      });
-      remaining -= minutes;
+  let remaining = availableHours * 60;
+  const result  = [];
+
+  function push(t, share) {
+    let minutes = roundMinutes(Math.min(share, t.hours * 60));
+    if (minutes <= 0) return;
+    result.push({
+      name: t.name, minutes, priority: t.priority,
+      anxiety: t.anxiety, hours: t.hours,
+      deadline: t.deadline, timeLeft: hoursUntil(t.deadline).toFixed(1),
+    });
+    remaining -= minutes;
+  }
+
+  // Tareas vencidas: share igual entre ellas
+  if (overdue.length) {
+    const share = remaining / overdue.length;
+    for (const t of overdue) {
+      if (remaining <= 0) break;
+      push(t, share);
     }
-  });
+  }
+
+  // Tareas normales: proporcional a prioridad
+  if (normalTotal > 0) {
+    for (const t of normal) {
+      if (remaining <= 0) break;
+      push(t, (t.priority / normalTotal) * (availableHours * 60));
+    }
+  }
 
   return result;
 }

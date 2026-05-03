@@ -214,10 +214,6 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
     return () => document.removeEventListener("keydown", onKey);
   }, [freeMode, plan.length]);
 
-  if (!plan.length) {
-    return <FreePomodoro th={th} />;
-  }
-
   function goTo(i) {
     setCur(i);
     setTimeLeft(seq[i].duration);
@@ -249,6 +245,10 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
 
       {freeMode ? (
         <FreePomodoro th={th} />
+      ) : !plan.length ? (
+        <section className={`border ${th.border} rounded-2xl ${th.surface} p-8 text-center`}>
+          <p className={`text-sm font-mono ${th.textMuted}`}>no hay plan aún — genera uno desde el planner</p>
+        </section>
       ) : <>
 
       {/* Modo */}
