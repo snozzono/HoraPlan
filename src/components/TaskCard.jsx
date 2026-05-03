@@ -3,14 +3,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { hoursUntil } from "../lib/scheduler";
 import AnxietyBar from "./AnxietyBar";
 
-export default function TaskCard({ task, index, onDelete, onEdit, isEditing, th }) {
+export default function TaskCard({ task, index, onDelete, onEdit, isEditing, th, T }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: task.id });
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
+  const style = { transform: CSS.Transform.toString(transform), transition };
 
   const hoursLeft = hoursUntil(task.deadline);
   const isUrgent  = hoursLeft < 4;
@@ -36,18 +33,15 @@ export default function TaskCard({ task, index, onDelete, onEdit, isEditing, th 
         isEditing ? "border-amber-400/70" : "hover:border-amber-400/40"
       } ${isDragging ? "opacity-50 shadow-lg" : ""}`}
     >
-      {/* Drag handle */}
       <button
         {...attributes}
         {...listeners}
         className={`${th.textMuted} cursor-grab active:cursor-grabbing touch-none flex-shrink-0 mt-1 select-none text-base leading-none`}
-        aria-label="Arrastrar tarea"
+        aria-label="drag"
         tabIndex={-1}
       >⠿</button>
 
       <div className="flex-1 min-w-0">
-
-        {/* Nombre + badges */}
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <button
             onClick={() => onEdit(index)}
@@ -57,46 +51,42 @@ export default function TaskCard({ task, index, onDelete, onEdit, isEditing, th 
           </button>
           {isOverdue && (
             <span className="text-xs bg-red-500/15 text-red-500 px-1.5 py-0.5 rounded font-mono">
-              VENCIDA
+              {T.overdueBadge}
             </span>
           )}
           {isUrgent && !isOverdue && (
             <span className="text-xs bg-orange-400/10 text-orange-500 px-1.5 py-0.5 rounded font-mono">
-              URGENTE
+              {T.urgentBadge}
             </span>
           )}
         </div>
 
-        {/* Metadatos */}
         <div className={`flex gap-3 text-xs font-mono ${th.textMeta} flex-wrap`}>
-          <span>{task.hours}h estimadas</span>
+          <span>{task.hours}h {T.estimated}</span>
           <span className={urgencyColor}>
-            {isOverdue ? "vencida" : `${hoursLeft.toFixed(1)}h restantes`}
+            {isOverdue ? T.overdue : `${hoursLeft.toFixed(1)}h ${T.remaining}`}
           </span>
           {task.deadline && (
             <span>
-              ({new Date(task.deadline).toLocaleDateString("es-CL", { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" })}
+              ({new Date(task.deadline).toLocaleDateString(T.dateLocale, { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" })}
               {" "}
-              {new Date(task.deadline).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })})
+              {new Date(task.deadline).toLocaleTimeString(T.dateLocale, { hour: "2-digit", minute: "2-digit" })})
             </span>
           )}
         </div>
 
-        {/* Barra de ansiedad */}
         <div className="mt-1.5">
           <div className="flex justify-between text-xs mb-0.5">
-            <span className={`${th.textAnxLabel} font-mono`}>ansiedad</span>
+            <span className={`${th.textAnxLabel} font-mono`}>{T.anxiety}</span>
             <span className={`${th.textAnxVal} font-mono`}>{task.anxiety}</span>
           </div>
           <AnxietyBar value={task.anxiety} th={th} />
         </div>
-
       </div>
 
-      {/* Eliminar */}
       <button
         onClick={() => onDelete(index)}
-        aria-label={`Eliminar tarea ${task.name}`}
+        aria-label="delete"
         className={`${th.deleteBtn} text-lg leading-none mt-0.5 flex-shrink-0`}
       >
         ×

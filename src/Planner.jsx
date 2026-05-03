@@ -1,14 +1,9 @@
-/**
- * Planner.jsx
- * Componente raíz. Maneja estado global y layout.
- * La lógica de negocio vive en lib/scheduler.js.
- * Los tokens visuales viven en theme/themes.js.
- */
 import { useState, useEffect } from "react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { THEMES } from "./theme/themes";
 import { calculatePlan, randomTask } from "./lib/scheduler";
+import { ES, EN } from "./lib/i18n";
 import SliderField     from "./components/SliderField";
 import AnxietyBar      from "./components/AnxietyBar";
 import HowItWorksCard     from "./components/HowItWorksCard";
@@ -17,7 +12,6 @@ import TaskCard        from "./components/TaskCard";
 import PlanResult      from "./components/PlanResult";
 import PomodoroView   from "./components/PomodoroView";
 
-// ── Hook: reloj en el título de la pestaña ───────────────────────────────────
 function useTabClock(paused = false) {
   useEffect(() => {
     if (paused) return;
@@ -34,10 +28,13 @@ function useTabClock(paused = false) {
   }, [paused]);
 }
 
-// ── Planner ──────────────────────────────────────────────────────────────────
 export default function Planner() {
   const [dark, setDark] = useState(false);
+  const [lang, setLang] = useState(() => localStorage.getItem("lang") || "es");
+  const T  = lang === "en" ? EN : ES;
   const th = dark ? THEMES.dark : THEMES.light;
+
+  useEffect(() => { localStorage.setItem("lang", lang); }, [lang]);
 
   const [tasks, setTasks] = useState(() => {
     try {
@@ -59,30 +56,21 @@ export default function Planner() {
   });
   const [showHistory, setShowHistory] = useState(false);
   const [pomodoroMode, setPomodoroMode] = useState(false);
-  const [msg, setMsg]       = useState("");
+  const [msg, setMsg] = useState("");
   useTabClock(pomodoroMode);
   const [showHow, setShowHow] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem("tasks", JSON.stringify(tasks));
-  }, [tasks]);
+  useEffect(() => { localStorage.setItem("tasks", JSON.stringify(tasks)); }, [tasks]);
+  useEffect(() => { localStorage.setItem("plan", JSON.stringify(plan)); }, [plan]);
+  useEffect(() => { localStorage.setItem("planHistory", JSON.stringify(planHistory)); }, [planHistory]);
 
-  useEffect(() => {
-    localStorage.setItem("plan", JSON.stringify(plan));
-  }, [plan]);
-
-  useEffect(() => {
-    localStorage.setItem("planHistory", JSON.stringify(planHistory));
-  }, [planHistory]);
-
-  // ── Handlers ────────────────────────────────────────────────────────────────
   function addTask() {
     if (!form.name.trim() || !form.deadline) {
-      setMsg("⚠ Completa nombre y deadline");
+      setMsg(T.fillNameDeadline);
       return;
     }
     if (editIndex !== null) {
-      setTasks(p => p.map((t, i) => i === editIndex ? { ...form } : t));
+      setTasks(p => p.map((t, i) => i === editIndex ? { ...t, ...form } : t));
       setEditIndex(null);
     } else {
       setTasks(p => [...p, { ...form, id: Date.now() }]);
@@ -111,7 +99,7 @@ export default function Planner() {
   }
 
   function generate() {
-    if (!tasks.length) { setMsg("⚠ No hay tareas"); return; }
+    if (!tasks.length) { setMsg(T.noTasks); return; }
     const newPlan = calculatePlan(tasks, availableHours);
     setPlan(newPlan);
     if (newPlan.length) {
@@ -129,8 +117,13 @@ export default function Planner() {
   }
 
   function loadTest() {
-    setTasks(p => [...p, randomTask(), randomTask(), randomTask()]);
-    setMsg("🧪 3 tareas aleatorias cargadas");
+    const base = Date.now();
+    setTasks(p => [...p,
+      { ...randomTask(), id: base },
+      { ...randomTask(), id: base + 1 },
+      { ...randomTask(), id: base + 2 },
+    ]);
+    setMsg(T.randomLoaded);
   }
 
   const sensors = useSensors(
@@ -154,7 +147,6 @@ export default function Planner() {
     setMsg("");
   }
 
-  // ── Clase base de inputs ─────────────────────────────────────────────────────
   const inputClass = [
     "w-full border",
     th.inputBorder,
@@ -165,7 +157,6 @@ export default function Planner() {
     "rounded-xl px-4 py-2.5 text-sm outline-none transition-colors font-mono",
   ].join(" ");
 
-  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div
       className={`min-h-screen ${th.bg} ${th.text} transition-colors duration-300`}
@@ -199,10 +190,16 @@ export default function Planner() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setLang(v => v === "es" ? "en" : "es")}
+            className={`text-xs font-mono transition-colors border ${th.toggleBorder} ${th.textToggle} px-3 py-1.5 rounded-lg`}
+          >
+            {lang === "es" ? "ENG" : "ESP"}
+          </button>
+          <button
             onClick={() => setDark(v => !v)}
             className={`text-xs font-mono transition-colors border ${th.toggleBorder} ${th.textToggle} px-3 py-1.5 rounded-lg`}
           >
-            {dark ? "☀ día" : "☾ noche"}
+            {dark ? T.day : T.night}
           </button>
           <button
             onClick={() => setPomodoroMode(v => !v)}
@@ -218,7 +215,7 @@ export default function Planner() {
             onClick={() => setShowHow(v => !v)}
             className={`text-xs font-mono transition-colors border ${th.toggleBorder} ${th.textToggle} px-3 py-1.5 rounded-lg`}
           >
-            {showHow ? "ocultar" : "¿cómo?"}
+            {showHow ? T.hide : T.how}
           </button>
         </div>
       </header>
@@ -226,19 +223,31 @@ export default function Planner() {
       {/* ── Main ──────────────────────────────────────────────────────────── */}
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
-        {showHow && (pomodoroMode ? <HowItWorksPomodoro th={th} /> : <HowItWorksCard th={th} />)}
+        {showHow && (pomodoroMode
+          ? <HowItWorksPomodoro th={th} T={T} />
+          : <HowItWorksCard th={th} T={T} />
+        )}
 
-        {pomodoroMode ? <PomodoroView plan={plan} planHistory={planHistory} onLoadPlan={p => setPlan(p)} onDeleteEntry={id => setPlanHistory(h => h.filter(e => e.id !== id))} th={th} /> : <>
+        {pomodoroMode
+          ? <PomodoroView
+              plan={plan}
+              planHistory={planHistory}
+              onLoadPlan={p => setPlan(p)}
+              onDeleteEntry={id => setPlanHistory(h => h.filter(e => e.id !== id))}
+              th={th}
+              T={T}
+            />
+          : <>
 
         {/* Nueva tarea */}
         <section className={`border ${th.border} rounded-2xl ${th.surface} p-5 shadow-sm`}>
           <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest mb-4`}>
-            {editIndex !== null ? "Editar tarea" : "Nueva tarea"}
+            {editIndex !== null ? T.editTask : T.newTask}
           </h2>
 
           <input
             type="text"
-            placeholder="Nombre de la tarea..."
+            placeholder={T.taskPlaceholder}
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             onKeyDown={e => e.key === "Enter" && addTask()}
@@ -246,19 +255,19 @@ export default function Planner() {
           />
 
           <SliderField
-            label="Horas estimadas" min={1} max={12}
+            label={T.estHours} min={1} max={12}
             value={form.hours} onChange={v => setForm(f => ({ ...f, hours: v }))}
             unit="h" th={th}
           />
           <SliderField
-            label="Nivel de ansiedad" min={0} max={100}
+            label={T.anxietyLevel} min={0} max={100}
             value={form.anxiety} onChange={v => setForm(f => ({ ...f, anxiety: v }))}
             th={th}
           />
 
           <div className="mb-4">
             <label className={`text-xs font-mono ${th.textLabel} uppercase tracking-widest block mb-1`}>
-              Deadline
+              {T.deadline}
             </label>
             <input
               type="datetime-local"
@@ -276,14 +285,14 @@ export default function Planner() {
                 onClick={cancelEdit}
                 className={`flex-1 border ${th.toggleBorder} ${th.textToggle} font-bold rounded-xl py-2.5 text-sm transition-all duration-150 tracking-wide active:scale-95`}
               >
-                CANCELAR
+                {T.cancel}
               </button>
             )}
             <button
               onClick={addTask}
               className="flex-1 bg-amber-400 hover:bg-amber-300 active:scale-95 text-zinc-950 font-bold rounded-xl py-2.5 text-sm transition-all duration-150 tracking-wide"
             >
-              {editIndex !== null ? "✓ ACTUALIZAR" : "+ AGREGAR TAREA"}
+              {editIndex !== null ? T.update : T.addTask}
             </button>
           </div>
         </section>
@@ -293,20 +302,20 @@ export default function Planner() {
           <section className={`border ${th.border} rounded-2xl ${th.surface} p-5 shadow-sm`}>
             <div className="flex items-center justify-between mb-3">
               <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest`}>
-                Tareas <span className={th.textAccent}>{tasks.length}</span>
+                {T.tasks} <span className={th.textAccent}>{tasks.length}</span>
               </h2>
               <button
                 onClick={clearAll}
                 className={`text-xs font-mono ${th.textClear} transition-colors`}
               >
-                limpiar todo
+                {T.clearAll}
               </button>
             </div>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-2">
                   {tasks.map((task, i) => (
-                    <TaskCard key={task.id} task={task} index={i} onDelete={deleteTask} onEdit={editTask} isEditing={editIndex === i} th={th} />
+                    <TaskCard key={task.id} task={task} index={i} onDelete={deleteTask} onEdit={editTask} isEditing={editIndex === i} th={th} T={T} />
                   ))}
                 </div>
               </SortableContext>
@@ -317,10 +326,10 @@ export default function Planner() {
         {/* Generar plan */}
         <section className={`border ${th.border} rounded-2xl ${th.surface} p-5 shadow-sm`}>
           <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest mb-4`}>
-            Generar plan
+            {T.generatePlan}
           </h2>
           <SliderField
-            label="Horas disponibles hoy" min={1} max={24}
+            label={T.availableHours} min={1} max={24}
             value={availableHours} onChange={setAvailableHours}
             unit="h" th={th}
           />
@@ -328,7 +337,7 @@ export default function Planner() {
             onClick={generate}
             className={`w-full border border-amber-400/60 hover:bg-amber-400/10 active:scale-95 ${th.textAccent} font-bold rounded-xl py-2.5 text-sm transition-all duration-150 tracking-wide`}
           >
-            ⚡ GENERAR PLAN
+            {T.generateBtn}
           </button>
           <PlanResult
             plan={plan}
@@ -336,6 +345,7 @@ export default function Planner() {
             onEditTask={name => { const i = tasks.findIndex(t => t.name === name); if (i !== -1) editTask(i); }}
             th={th} dark={dark}
             onPomodoro={() => setPomodoroMode(true)}
+            T={T}
           />
         </section>
 
@@ -347,18 +357,18 @@ export default function Planner() {
               className="w-full flex items-center justify-between"
             >
               <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest`}>
-                Historial <span className={th.textAccent}>{planHistory.length}</span>
+                {T.history} <span className={th.textAccent}>{planHistory.length}</span>
               </h2>
               <span className={`text-xs font-mono ${th.textMuted}`}>
-                {showHistory ? "▲ ocultar" : "▼ ver"}
+                {showHistory ? T.hideHistory : T.showHistory}
               </span>
             </button>
             {showHistory && (
               <div className="mt-3 space-y-2">
                 {planHistory.map((entry) => {
                   const date = new Date(entry.savedAt);
-                  const label = date.toLocaleDateString("es-CL", { weekday: "short", day: "numeric", month: "short" });
-                  const time  = date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+                  const label = date.toLocaleDateString(T.dateLocale, { weekday: "short", day: "numeric", month: "short" });
+                  const time  = date.toLocaleTimeString(T.dateLocale, { hour: "2-digit", minute: "2-digit" });
                   return (
                     <div key={entry.id} className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border ${th.taskNormal} hover:border-amber-400/40 transition-colors`}>
                       <button
@@ -374,15 +384,15 @@ export default function Planner() {
                             {entry.plan.at(-1)?.name} — {label} · {time}
                           </span>
                           <div className={`text-xs font-mono ${th.textMuted} mt-0.5`}>
-                            {entry.taskCount} tareas · {(entry.totalMinutes / 60).toFixed(1)}h
+                            {T.tasksCount(entry.taskCount)} · {(entry.totalMinutes / 60).toFixed(1)}h
                           </div>
                         </div>
-                        <span className={`text-xs font-mono ${th.textAccent} mr-2`}>cargar →</span>
+                        <span className={`text-xs font-mono ${th.textAccent} mr-2`}>{T.loadEntry}</span>
                       </button>
                       <button
                         onClick={() => setPlanHistory(h => h.filter(e => e.id !== entry.id))}
                         className={`${th.deleteBtn} text-lg leading-none flex-shrink-0`}
-                        aria-label="Eliminar entrada"
+                        aria-label="delete"
                       >×</button>
                     </div>
                   );
@@ -404,7 +414,7 @@ export default function Planner() {
             onClick={loadTest}
             className={`w-full border ${th.borderDevBtn} active:scale-95 ${th.textDevBtn} rounded-xl py-2 text-xs font-mono transition-all duration-150`}
           >
-            🧪 cargar 3 tareas aleatorias
+            {T.loadRandom}
           </button>
           {msg && (
             <p className={`mt-2 text-xs font-mono ${th.textSub} text-center`}>{msg}</p>

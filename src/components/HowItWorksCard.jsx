@@ -1,51 +1,29 @@
-/**
- * HowItWorksCard.jsx
- * Card explicativa con la fórmula del algoritmo y los 3 pasos de uso.
- * Se muestra/oculta desde Planner.jsx con el botón "¿cómo?".
- *
- * Props:
- *   th {object} - Tokens del tema activo (de themes.js)
- */
-export default function HowItWorksCard({ th }) {
+export default function HowItWorksCard({ th, T }) {
   const steps = [
-    {
-      icon: "01",
-      title: "Agrega tareas",
-      desc: "Nombre, horas estimadas, nivel de ansiedad y deadline.",
-    },
-    {
-      icon: "02",
-      title: "Define tu tiempo",
-      desc: "Cuántas horas tienes disponibles hoy para estudiar.",
-    },
-    {
-      icon: "03",
-      title: "Genera el plan",
-      desc: "El algoritmo distribuye el tiempo según urgencia y ansiedad.",
-    },
+    { icon: "01", title: T.step1Title, desc: T.step1Desc },
+    { icon: "02", title: T.step2Title, desc: T.step2Desc },
+    { icon: "03", title: T.step3Title, desc: T.step3Desc },
   ];
 
   return (
     <div className={`border ${th.howBorder} rounded-2xl ${th.surfaceHow} p-5 mb-2`}>
       <div className="flex items-center gap-2 mb-4">
         <span className={`text-xs font-mono ${th.textAccent} opacity-80 uppercase tracking-widest`}>
-          ¿Cómo funciona?
+          {T.howTitle}
         </span>
         <div className={`flex-1 h-px ${th.divider} opacity-40`} />
       </div>
 
-      {/* Fórmula */}
       <div className={`${th.surfaceFormula} border ${th.borderFormula} rounded-xl p-3 mb-5 font-mono text-center`}>
-        <div className={`text-xs ${th.textMuted} mb-1`}>prioridad =</div>
+        <div className={`text-xs ${th.textMuted} mb-1`}>{T.priorityLabel}</div>
         <div className={`${th.textAccentSoft} text-sm`}>
-          (ansiedad × horas) / T × ln(horas + 1)
+          (anxiety × hours) / T × ln(hours + 1)
         </div>
         <div className={`text-xs ${th.textMuted} mt-1`}>
-          donde T = horas hasta el deadline
+          {T.formulaDesc}
         </div>
       </div>
 
-      {/* Pasos */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {steps.map(s => (
           <div

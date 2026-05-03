@@ -5,12 +5,6 @@ const PRESETS = {
   beast:    { work: 0,  shortBreak: 0,  longBreak: 0,  longBreakEvery: 0 },
 };
 
-const BLOCK_LABELS = {
-  work:       "trabajo",
-  shortBreak: "descanso corto",
-  longBreak:  "descanso largo",
-};
-
 function buildSequence(plan, cfg) {
   if (cfg.preset === "beast") {
     return plan.map(t => ({ type: "work", task: t.name, duration: t.minutes * 60 }));
@@ -74,7 +68,7 @@ function playSound(type) {
   } catch {}
 }
 
-export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDeleteEntry, th }) {
+export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDeleteEntry, th, T }) {
   const [preset, setPreset]     = useState("standard");
   const [cfg, setCfg]           = useState({ preset: "standard", ...PRESETS.standard });
   const [seq, setSeq]           = useState([]);
@@ -95,27 +89,29 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
     }
   }, []);
 
+  const blockLabels = { work: T.work, shortBreak: T.shortBreak, longBreak: T.longBreak };
+
   const block  = seq[cur];
   const isWork = block?.type === "work";
   const pct    = block ? ((block.duration - timeLeft) / block.duration) * 100 : 0;
 
+  const notifSupported = "Notification" in window;
   const [notifPermission, setNotifPermission] = useState(
-    () => ("Notification" in window ? Notification.permission : "granted")
+    () => (notifSupported ? Notification.permission : "granted")
   );
 
-  useEffect(() => {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().then(p => setNotifPermission(p));
-    }
-  }, []);
+  async function requestNotifPermission() {
+    if (!notifSupported) return;
+    const p = await Notification.requestPermission();
+    setNotifPermission(p);
+  }
 
-  // Título de pestaña
   useEffect(() => {
     if (!block) return;
     const emoji = running ? (block.type === "work" ? "🍅" : "☕") : "⏸";
-    const label = block.task ?? BLOCK_LABELS[block.type];
+    const label = block.task ?? blockLabels[block.type];
     document.title = `${emoji} ${fmt(timeLeft)} — ${label}`;
-  }, [timeLeft, running, block]);
+  }, [timeLeft, running, block, T]);
 
   useEffect(() => {
     const s = buildSequence(plan, cfg);
@@ -129,8 +125,8 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
   function notify(b) {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     const isW  = b.type === "work";
-    const title = isW ? "¡A trabajar! 🍅" : "¡Descansa! ☕";
-    const opts  = { body: isW ? b.task : BLOCK_LABELS[b.type], icon: "/favicon.svg" };
+    const title = isW ? T.timeToWork : T.takeBreak;
+    const opts  = { body: isW ? b.task : blockLabels[b.type], icon: "/favicon.svg" };
     if (swRef.current) swRef.current.showNotification(title, opts);
     else new Notification(title, opts);
   }
@@ -141,12 +137,11 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
     swRef.current.active.postMessage({
       type:  "SCHEDULE_NOTIFICATION",
       delay: delayMs,
-      title: isW ? "¡A trabajar! 🍅" : "¡Descansa! ☕",
-      body:  isW ? b.task : BLOCK_LABELS[b.type],
+      title: isW ? T.timeToWork : T.takeBreak,
+      body:  isW ? b.task : blockLabels[b.type],
     });
   }
 
-  // Fija blockEndRef al iniciar y libera al pausar
   useEffect(() => {
     if (running) {
       blockEndRef.current = Date.now() + stateRef.current.timeLeft * 1000;
@@ -157,7 +152,6 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
     }
   }, [running]);
 
-  // Sincroniza al volver de background (teléfono bloqueado)
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== "visible" || !blockEndRef.current) return;
@@ -168,7 +162,6 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
-  // Timer con timestamps absolutos
   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => {
@@ -188,9 +181,9 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
       } else {
         playSound("done");
         if ("Notification" in window && Notification.permission === "granted") {
-          const opts = { body: "Buen trabajo 💪", icon: "/favicon.svg" };
-          if (swRef.current) swRef.current.showNotification("¡Plan completado! 🎉", opts);
-          else new Notification("¡Plan completado! 🎉", opts);
+          const opts = { body: T.goodWork, icon: "/favicon.svg" };
+          if (swRef.current) swRef.current.showNotification(T.planComplete, opts);
+          else new Notification(T.planComplete, opts);
         }
         setRunning(false);
         blockEndRef.current = null;
@@ -200,7 +193,6 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
     return () => clearInterval(id);
   }, [running]);
 
-  // Espacio = play/pause (solo cuando está en modo plan)
   useEffect(() => {
     if (!plan.length || freeMode) return;
     const onKey = (e) => {
@@ -232,7 +224,7 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
 
       {/* Tabs: Plan / Libre */}
       <div className="flex gap-2">
-        {[["plan", "🍅 Plan"], ["libre", "⚡ Libre"]].map(([val, label]) => (
+        {[["plan", `🍅 Plan`], ["libre", `⚡ ${T.standard === "Standard" ? "Free" : "Libre"}`]].map(([val, label]) => (
           <button key={val} onClick={() => setFreeMode(val === "libre")}
             className={`flex-1 text-xs font-mono py-2 rounded-xl border transition-colors ${
               freeMode === (val === "libre")
@@ -243,30 +235,41 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
         ))}
       </div>
 
+      {/* Banner de notificaciones */}
+      {notifSupported && notifPermission !== "granted" && (
+        <button
+          onClick={requestNotifPermission}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border border-orange-400/40 bg-orange-400/10 text-left transition-colors hover:bg-orange-400/20 active:scale-[0.98]"
+        >
+          <span className="text-xl">🔔</span>
+          <div className="flex-1">
+            <p className="text-xs font-bold text-orange-400 font-mono">
+              {T.allowNotifs}
+            </p>
+            <p className={`text-xs font-mono ${th.textMuted} mt-0.5`}>
+              {T.allowNotifsDesc}
+            </p>
+          </div>
+          <span className="text-orange-400 text-sm">→</span>
+        </button>
+      )}
+
       {freeMode ? (
-        <FreePomodoro th={th} />
+        <FreePomodoro th={th} T={T} />
       ) : !plan.length ? (
         <section className={`border ${th.border} rounded-2xl ${th.surface} p-8 text-center`}>
-          <p className={`text-sm font-mono ${th.textMuted}`}>no hay plan aún — genera uno desde el planner</p>
+          <p className={`text-sm font-mono ${th.textMuted}`}>{T.noPlan}</p>
         </section>
       ) : <>
 
       {/* Modo */}
       <section className={`border rounded-2xl ${th.surface} shadow-sm overflow-hidden transition-all duration-500 ${running ? "max-h-0 p-0 opacity-0 border-transparent" : `max-h-[32rem] p-5 opacity-100 ${th.border}`}`}>
         <div className="flex items-center justify-between mb-3">
-          <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest`}>Modo</h2>
-          {notifPermission !== "granted" && (
-            <button
-              onClick={() => Notification.requestPermission().then(p => setNotifPermission(p))}
-              className="text-xs font-mono text-orange-400 text-right leading-tight max-w-[60%] hover:text-orange-300 transition-colors"
-            >
-              permite las notificaciones →
-            </button>
-          )}
+          <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest`}>{T.mode}</h2>
         </div>
         <div>
         <div className="flex gap-2 mb-4">
-          {[["standard","Estándar"],["beast","⚡ Bestia"],["custom","Custom"]].map(([k, l]) => (
+          {[["standard", T.standard], ["beast", T.beast], ["custom", "Custom"]].map(([k, l]) => (
             <button key={k} onClick={() => changePreset(k)}
               className={`flex-1 text-xs font-mono py-1.5 rounded-lg border transition-colors ${
                 preset === k
@@ -280,10 +283,10 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
         {preset !== "beast" && (
           <div className="space-y-3">
             {[
-              ["Trabajo (min)",        "work",          1, 120],
-              ["Descanso corto (min)", "shortBreak",    0,  30],
-              ["Descanso largo (min)", "longBreak",     0,  60],
-              ["Desc. largo cada N",   "longBreakEvery",1,  10],
+              [T.workMin,        "work",          1, 120],
+              [T.shortBreakMin,  "shortBreak",    0,  30],
+              [T.longBreakMin,   "longBreak",     0,  60],
+              [T.longBreakEveryN,"longBreakEvery",1,  10],
             ].map(([label, key, min, max]) => (
               <div key={key}>
                 <div className="flex justify-between mb-1">
@@ -307,7 +310,7 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
       {/* Timer */}
       <section className={`border ${th.planBorder} rounded-2xl ${th.planBg} p-6 text-center`}>
         <p className={`text-xs font-mono ${th.textMuted} uppercase tracking-widest mb-1`}>
-          {BLOCK_LABELS[block?.type]} · {cur + 1} / {seq.length}
+          {blockLabels[block?.type]} · {cur + 1} / {seq.length}
         </p>
         <p className={`text-sm font-semibold ${th.text} mb-5 truncate px-4`}>
           {block?.task ?? "—"}
@@ -332,16 +335,16 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
           </button>
         </div>
 
-        <p className={`text-xs font-mono ${th.textMuted} mt-2`}>espacio = play/pause</p>
+        <p className={`text-xs font-mono ${th.textMuted} mt-2`}>{T.spacePlayPause}</p>
       </section>
 
       {/* Secuencia */}
       <section className={`border ${th.border} rounded-2xl ${th.surface} p-4`}>
-        <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest mb-3`}>Secuencia</h2>
+        <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest mb-3`}>{T.sequence}</h2>
         <div className="flex flex-wrap gap-1.5 items-center">
           {seq.map((b, i) => (
             <button key={i} onClick={() => goTo(i)}
-              title={b.task ?? BLOCK_LABELS[b.type]}
+              title={b.task ?? blockLabels[b.type]}
               className={`rounded-full transition-all duration-200 ${
                 i === cur ? "w-6 h-3 opacity-100" : "w-2 h-2 opacity-40 hover:opacity-75"
               } ${b.type === "work" ? "bg-amber-400" : "bg-emerald-400"}`}
@@ -354,10 +357,10 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
 
       {/* Historial */}
       {!freeMode && planHistory.length > 0 && (
-        <HistorialSection planHistory={planHistory} onLoadPlan={onLoadPlan} onDeleteEntry={onDeleteEntry} th={th} />
+        <HistorialSection planHistory={planHistory} onLoadPlan={onLoadPlan} onDeleteEntry={onDeleteEntry} th={th} T={T} />
       )}
 
-      {/* Dev tools — plan */}
+      {/* Dev tools */}
       {!freeMode && (
         <section className={`border ${th.border} rounded-2xl ${th.surfaceDev} p-4`}>
           <div className="flex items-center gap-2 mb-3">
@@ -372,7 +375,7 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
             <button
               onClick={() => playSound("done")}
               className={`flex-1 border ${th.borderDevBtn} active:scale-95 ${th.textDevBtn} rounded-xl py-2 text-xs font-mono transition-all`}
-            >🔊 sonido</button>
+            >🔊 sound</button>
             <button
               onClick={() => notify(block ?? { type: "work", task: "test" })}
               className={`flex-1 border ${th.borderDevBtn} active:scale-95 ${th.textDevBtn} rounded-xl py-2 text-xs font-mono transition-all`}
@@ -385,7 +388,7 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
   );
 }
 
-function FreePomodoro({ th }) {
+function FreePomodoro({ th, T }) {
   const [name, setName]         = useState("");
   const [duration, setDuration] = useState(25);
   const [timeLeft, setTimeLeft] = useState(25 * 60);
@@ -405,7 +408,6 @@ function FreePomodoro({ th }) {
     }
   }, [duration]);
 
-  // Fija blockEndRef al iniciar
   useEffect(() => {
     if (running) {
       blockEndRef.current = Date.now() + timeLeft * 1000;
@@ -414,7 +416,6 @@ function FreePomodoro({ th }) {
     }
   }, [running]);
 
-  // Sincroniza al volver de background
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== "visible" || !blockEndRef.current) return;
@@ -425,7 +426,6 @@ function FreePomodoro({ th }) {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
-  // Espacio = play/pause
   useEffect(() => {
     const onKey = (e) => {
       if (e.code !== "Space") return;
@@ -438,32 +438,31 @@ function FreePomodoro({ th }) {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // Timer con timestamps absolutos
   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => {
       if (!blockEndRef.current) return;
       const rem = Math.ceil((blockEndRef.current - Date.now()) / 1000);
       if (rem > 0) {
-        const label = nameRef.current.trim() || "Pomodoro libre";
+        const label = T.freeLabel(nameRef.current);
         document.title = `🍅 ${fmt(rem)} — ${label}`;
         setTimeLeft(rem);
         return;
       }
-      const label = nameRef.current.trim() || "Pomodoro libre";
+      const label = T.freeLabel(nameRef.current);
       playSound("done");
       setSessions(s => s + 1);
       setRunning(false);
       setDone(true);
       blockEndRef.current = null;
       setTimeLeft(0);
-      document.title = `✅ ¡Listo! — ${label}`;
+      document.title = `${T.sessionDoneTitle} — ${label}`;
       if ("Notification" in window && Notification.permission === "granted") {
-        new Notification("¡Sesión completada! 🎉", { body: label, icon: "/favicon.svg" });
+        new Notification(T.sessionComplete, { body: label, icon: "/favicon.svg" });
       }
     }, 500);
     return () => clearInterval(id);
-  }, [running]);
+  }, [running, T]);
 
   function reset() {
     setRunning(false);
@@ -482,13 +481,13 @@ function FreePomodoro({ th }) {
       <section className={`border ${th.planBorder} rounded-2xl ${th.planBg} p-5`}>
       {sessions > 0 && (
         <p className={`text-xs font-mono ${th.textMuted} text-center mb-3`}>
-          {"🍅".repeat(Math.min(sessions, 8))}{sessions > 8 ? ` ×${sessions}` : ""} completado{sessions > 1 ? "s" : ""}
+          {T.completedSessions(sessions)}
         </p>
       )}
 
       <input
         type="text"
-        placeholder="¿En qué vas a trabajar? (opcional)"
+        placeholder={T.whatWorkOn}
         value={name}
         onChange={e => setName(e.target.value)}
         disabled={running}
@@ -497,7 +496,7 @@ function FreePomodoro({ th }) {
 
       <div className="mb-5">
         <div className="flex justify-between mb-1">
-          <span className={`text-xs font-mono ${th.textLabel}`}>Duración</span>
+          <span className={`text-xs font-mono ${th.textLabel}`}>{T.duration}</span>
           <span className={`text-xs font-mono ${th.textAccent}`}>{duration} min</span>
         </div>
         <input
@@ -510,7 +509,7 @@ function FreePomodoro({ th }) {
       </div>
 
       {done && (
-        <p className="text-sm font-mono text-emerald-400 text-center mb-3">¡Sesión completada! 🎉</p>
+        <p className="text-sm font-mono text-emerald-400 text-center mb-3">{T.sessionComplete}</p>
       )}
 
       <div className="font-mono text-7xl font-bold text-amber-400 tabular-nums tracking-widest text-center mb-6">
@@ -537,7 +536,7 @@ function FreePomodoro({ th }) {
         />
       </div>
 
-      <p className={`text-xs font-mono ${th.textMuted} text-center mt-3`}>espacio = play/pause</p>
+      <p className={`text-xs font-mono ${th.textMuted} text-center mt-3`}>{T.spacePlayPause}</p>
       </section>
 
       <section className={`border ${th.border} rounded-2xl ${th.surfaceDev} p-4`}>
@@ -553,9 +552,9 @@ function FreePomodoro({ th }) {
           <button
             onClick={() => playSound("done")}
             className={`flex-1 border ${th.borderDevBtn} active:scale-95 ${th.textDevBtn} rounded-xl py-2 text-xs font-mono transition-all`}
-          >🔊 sonido</button>
+          >🔊 sound</button>
           <button
-            onClick={() => { if ("Notification" in window && Notification.permission === "granted") new Notification("¡Sesión completada! 🎉", { body: nameRef.current || "Pomodoro libre", icon: "/favicon.svg" }); }}
+            onClick={() => { if ("Notification" in window && Notification.permission === "granted") new Notification(T.sessionComplete, { body: T.freeLabel(nameRef.current), icon: "/favicon.svg" }); }}
             className={`flex-1 border ${th.borderDevBtn} active:scale-95 ${th.textDevBtn} rounded-xl py-2 text-xs font-mono transition-all`}
           >🔔 notif</button>
         </div>
@@ -564,22 +563,22 @@ function FreePomodoro({ th }) {
   );
 }
 
-function HistorialSection({ planHistory, onLoadPlan, onDeleteEntry, th }) {
+function HistorialSection({ planHistory, onLoadPlan, onDeleteEntry, th, T }) {
   const [open, setOpen] = useState(false);
   return (
     <section className={`border ${th.border} rounded-2xl ${th.surface} p-5 shadow-sm`}>
       <button onClick={() => setOpen(v => !v)} className="w-full flex items-center justify-between">
         <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest`}>
-          Historial <span className={th.textAccent}>{planHistory.length}</span>
+          {T.history} <span className={th.textAccent}>{planHistory.length}</span>
         </h2>
-        <span className={`text-xs font-mono ${th.textMuted}`}>{open ? "▲ ocultar" : "▼ ver"}</span>
+        <span className={`text-xs font-mono ${th.textMuted}`}>{open ? T.hideHistory : T.showHistory}</span>
       </button>
       {open && (
         <div className="mt-3 space-y-2">
           {planHistory.map(entry => {
             const date = new Date(entry.savedAt);
-            const label = date.toLocaleDateString("es-CL", { weekday: "short", day: "numeric", month: "short" });
-            const time  = date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+            const label = date.toLocaleDateString(T.dateLocale, { weekday: "short", day: "numeric", month: "short" });
+            const time  = date.toLocaleTimeString(T.dateLocale, { hour: "2-digit", minute: "2-digit" });
             return (
               <div key={entry.id} className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border ${th.taskNormal} hover:border-amber-400/40 transition-colors`}>
                 <button onClick={() => onLoadPlan?.(entry.plan)} className="flex-1 text-left flex items-center justify-between">
@@ -588,15 +587,15 @@ function HistorialSection({ planHistory, onLoadPlan, onDeleteEntry, th }) {
                       {entry.plan.at(-1)?.name} — {label} · {time}
                     </span>
                     <div className={`text-xs font-mono ${th.textMuted} mt-0.5`}>
-                      {entry.taskCount} tareas · {(entry.totalMinutes / 60).toFixed(1)}h
+                      {T.tasksCount(entry.taskCount)} · {(entry.totalMinutes / 60).toFixed(1)}h
                     </div>
                   </div>
-                  <span className={`text-xs font-mono ${th.textAccent} mr-2`}>cargar →</span>
+                  <span className={`text-xs font-mono ${th.textAccent} mr-2`}>{T.loadEntry}</span>
                 </button>
                 <button
                   onClick={() => onDeleteEntry?.(entry.id)}
                   className={`${th.deleteBtn} text-lg leading-none flex-shrink-0`}
-                  aria-label="Eliminar entrada"
+                  aria-label="delete"
                 >×</button>
               </div>
             );

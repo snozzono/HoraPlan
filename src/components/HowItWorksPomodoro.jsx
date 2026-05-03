@@ -1,42 +1,28 @@
-export default function HowItWorksPomodoro({ th }) {
+export default function HowItWorksPomodoro({ th, T }) {
   const steps = [
-    {
-      icon: "01",
-      title: "Genera un plan",
-      desc: "Vuelve al planner, agrega tareas y presiona ⚡ Generar plan.",
-    },
-    {
-      icon: "02",
-      title: "Elige tu modo",
-      desc: "Estándar (25/5 min), Bestia (sin descansos) o Custom con tus propios tiempos.",
-    },
-    {
-      icon: "03",
-      title: "Presiona ▶",
-      desc: "El timer corre bloque a bloque. Navega con ◀ ▶ o salta desde los puntos de la secuencia.",
-    },
+    { icon: "01", title: T.pomStep1Title, desc: T.pomStep1Desc },
+    { icon: "02", title: T.pomStep2Title, desc: T.pomStep2Desc },
+    { icon: "03", title: T.pomStep3Title, desc: T.pomStep3Desc },
   ];
 
   return (
     <div className={`border ${th.howBorder} rounded-2xl ${th.surfaceHow} p-5 mb-2`}>
       <div className="flex items-center gap-2 mb-4">
         <span className={`text-xs font-mono ${th.textAccent} opacity-80 uppercase tracking-widest`}>
-          ¿Cómo funciona el pomodoro?
+          {T.howPomodoroTitle}
         </span>
         <div className={`flex-1 h-px ${th.divider} opacity-40`} />
       </div>
 
-      {/* Modos */}
       <div className={`${th.surfaceFormula} border ${th.borderFormula} rounded-xl p-3 mb-5 font-mono text-center`}>
-        <div className={`text-xs ${th.textMuted} mb-2`}>modos disponibles</div>
+        <div className={`text-xs ${th.textMuted} mb-2`}>{T.modesAvailable}</div>
         <div className="flex justify-center gap-4 text-sm">
-          <span className={th.textAccentSoft}>🍅 Estándar <span className={`text-xs ${th.textMuted}`}>25/5/15</span></span>
-          <span className={th.textAccentSoft}>⚡ Bestia <span className={`text-xs ${th.textMuted}`}>sin descansos</span></span>
+          <span className={th.textAccentSoft}>🍅 {T.standard} <span className={`text-xs ${th.textMuted}`}>25/5/15</span></span>
+          <span className={th.textAccentSoft}>⚡ {T.beast.replace("⚡ ", "")} <span className={`text-xs ${th.textMuted}`}>{T.beastDesc}</span></span>
           <span className={th.textAccentSoft}>⚙ Custom</span>
         </div>
       </div>
 
-      {/* Pasos */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {steps.map(s => (
           <div

@@ -14,7 +14,7 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function buildCanvas(plan, dark) {
+function buildCanvas(plan, dark, T) {
   const W       = 800;
   const PAD     = 40;
   const ROW     = 72;
@@ -40,16 +40,14 @@ function buildCanvas(plan, dark) {
 
   const totalMin = plan.reduce((s, t) => s + t.minutes, 0);
 
-  // Header
   ctx.fillStyle = "#f59e0b";
   ctx.font      = `bold 20px ${MONO}`;
   ctx.fillText("HORAPLAN", PAD, PAD + 20);
 
   ctx.fillStyle = MUTED;
   ctx.font      = `12px ${MONO}`;
-  ctx.fillText(`plan generado · ${(totalMin / 60).toFixed(1)}h total`, PAD, PAD + 44);
+  ctx.fillText(T.canvasSubtitle((totalMin / 60).toFixed(1)), PAD, PAD + 44);
 
-  // Rows
   plan.forEach((item, i) => {
     const y = HEADER + PAD + i * ROW;
 
@@ -63,14 +61,12 @@ function buildCanvas(plan, dark) {
     const minW     = ctx.measureText(minLabel).width;
     ctx.fillText(minLabel, W - PAD - minW, y + 14);
 
-    // Bar bg
     const barY = y + 22;
     const barW = W - PAD * 2;
     ctx.fillStyle = BAR_BG;
     roundRect(ctx, PAD, barY, barW, 6, 3);
     ctx.fill();
 
-    // Bar fill
     const fill = (item.minutes / totalMin) * barW;
     const grad = ctx.createLinearGradient(PAD, 0, PAD + fill, 0);
     grad.addColorStop(0, "#f59e0b");
@@ -79,16 +75,14 @@ function buildCanvas(plan, dark) {
     roundRect(ctx, PAD, barY, fill, 6, 3);
     ctx.fill();
 
-    // Meta
     ctx.fillStyle = MUTED;
     ctx.font      = `11px ${MONO}`;
     const deadline = item.deadline
-      ? ` · ${new Date(item.deadline).toLocaleDateString("es-CL", { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" })}`
+      ? ` · ${new Date(item.deadline).toLocaleDateString(T.dateLocale, { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" })}`
       : "";
-    ctx.fillText(`${item.timeLeft}h hasta deadline${deadline}`, PAD, y + 52);
+    ctx.fillText(`${item.timeLeft}${T.canvasUntilDeadline}${deadline}`, PAD, y + 52);
   });
 
-  // Footer
   ctx.fillStyle = MUTED;
   ctx.font      = `11px ${MONO}`;
   const foot    = "horaplan — snozz";
@@ -97,7 +91,7 @@ function buildCanvas(plan, dark) {
   return canvas;
 }
 
-export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, onPomodoro }) {
+export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, onPomodoro, T }) {
   if (!plan.length) return null;
 
   const [editIdx, setEditIdx] = useState(null);
@@ -116,7 +110,7 @@ export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, o
   }
 
   function handleDownload() {
-    const canvas = buildCanvas(plan, dark);
+    const canvas = buildCanvas(plan, dark, T);
     const a = document.createElement("a");
     a.href = canvas.toDataURL("image/png");
     a.download = "horaplan.png";
@@ -124,16 +118,16 @@ export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, o
   }
 
   async function handleShare() {
-    const canvas = buildCanvas(plan, dark);
+    const canvas = buildCanvas(plan, dark, T);
     canvas.toBlob(async (blob) => {
       const file = new File([blob], "horaplan.png", { type: "image/png" });
       if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: "Mi plan — HoraPlan" });
+        await navigator.share({ files: [file], title: T.myPlanShare });
       } else {
         await navigator.clipboard.writeText(
           plan.map(t => `${t.name}: ${t.minutes} min`).join("\n")
         );
-        alert("Copiado al portapapeles");
+        alert(T.copiedClipboard);
       }
     }, "image/png");
   }
@@ -142,7 +136,7 @@ export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, o
     <div className={`border ${th.planBorder} rounded-2xl ${th.planBg} p-5 mt-4`}>
       <div className="flex items-center justify-between mb-4">
         <span className={`text-xs font-mono ${th.textAccent} opacity-80 uppercase tracking-widest`}>
-          Plan generado
+          {T.planGenerated}
         </span>
         <div className="flex items-center gap-2">
           <span className={`text-xs font-mono ${th.textSub}`}>
@@ -150,17 +144,17 @@ export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, o
           </span>
           <button
             onClick={handleDownload}
-            title="Descargar PNG"
+            title={T.downloadTitle}
             className={`text-xs font-mono border ${th.toggleBorder} ${th.textToggle} px-2 py-1 rounded-lg transition-colors hover:bg-amber-400/10`}
           >
             ↓ png
           </button>
           <button
             onClick={handleShare}
-            title="Compartir"
+            title={T.shareTitle}
             className={`text-xs font-mono border ${th.toggleBorder} ${th.textToggle} px-2 py-1 rounded-lg transition-colors hover:bg-amber-400/10`}
           >
-            ↑ compartir
+            {T.shareBtn}
           </button>
         </div>
       </div>
@@ -202,12 +196,12 @@ export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, o
                 />
               </div>
               <div className={`flex gap-3 mt-1 text-xs font-mono ${th.textMuted}`}>
-                <span>prioridad {item.priority === Infinity ? "∞" : item.priority.toFixed(2)}</span>
+                <span>{T.priority} {item.priority === Infinity ? "∞" : item.priority.toFixed(2)}</span>
                 <span>·</span>
                 <span>
                   {item.timeLeft}h
-                  {item.deadline && ` (${new Date(item.deadline).toLocaleDateString("es-CL", { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" })})`}
-                  {" "}hasta deadline
+                  {item.deadline && ` (${new Date(item.deadline).toLocaleDateString(T.dateLocale, { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" })})`}
+                  {" "}{T.untilDeadline}
                 </span>
               </div>
             </div>
@@ -220,7 +214,7 @@ export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, o
           onClick={onPomodoro}
           className={`text-xs font-mono border ${th.toggleBorder} ${th.textToggle} px-3 py-1.5 rounded-lg transition-colors hover:bg-amber-400/10`}
         >
-          🍅 iniciar pomodoro
+          {T.startPomodoro}
         </button>
       </div>
     </div>
