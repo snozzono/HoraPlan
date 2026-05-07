@@ -10,8 +10,9 @@ import HowItWorksCard     from "./components/HowItWorksCard";
 import HowItWorksPomodoro from "./components/HowItWorksPomodoro";
 import TaskCard        from "./components/TaskCard";
 import PlanResult      from "./components/PlanResult";
-import PomodoroView   from "./components/PomodoroView";
-import TimeBlockView  from "./components/TimeBlockView";
+import PomodoroView        from "./components/PomodoroView";
+import TimeBlockView       from "./components/TimeBlockView";
+import HowItWorksCalendar from "./components/HowItWorksCalendar";
 
 function useTabClock(paused = false) {
   useEffect(() => {
@@ -259,7 +260,9 @@ export default function Planner() {
 
         {showHow && (activeView === "pomodoro"
           ? <HowItWorksPomodoro th={th} T={T} />
-          : <HowItWorksCard th={th} T={T} />
+          : activeView === "timeblock"
+            ? <HowItWorksCalendar th={th} locale={lang === "en" ? "en-US" : "es-CL"} />
+            : <HowItWorksCard th={th} T={T} />
         )}
 
         {activeView === "pomodoro" ? (<>
@@ -296,6 +299,7 @@ export default function Planner() {
           <TimeBlockView
             th={th} tasks={tasks} plan={plan}
             onScheduledTasksChange={setScheduledEntries}
+            onPomodoro={() => setActiveView("pomodoro")}
           />
         ) : <>
 

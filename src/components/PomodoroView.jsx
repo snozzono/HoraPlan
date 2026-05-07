@@ -241,7 +241,7 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
         </div>
         <div>
         <div className="flex gap-2 mb-4">
-          {[["standard", T.standard], ["beast", T.beast], ["custom", "Custom"]].map(([k, l]) => (
+          {[["standard", T.standard], ["beast", T.beast]].map(([k, l]) => (
             <button key={k} onClick={() => changePreset(k)}
               className={`flex-1 text-xs font-mono py-1.5 rounded-lg border transition-colors ${
                 preset === k
@@ -255,10 +255,8 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
         {preset !== "beast" && (
           <div className="space-y-3">
             {[
-              [T.workMin,        "work",          1, 120],
-              [T.shortBreakMin,  "shortBreak",    0,  30],
-              [T.longBreakMin,   "longBreak",     0,  60],
-              [T.longBreakEveryN,"longBreakEvery",1,  10],
+              [T.workMin,       "work",       1, 120],
+              [T.shortBreakMin, "shortBreak", 0,  30],
             ].map(([label, key, min, max]) => (
               <div key={key}>
                 <div className="flex justify-between mb-1">
@@ -316,19 +314,52 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
       </section>
 
       {/* Secuencia */}
-      <section className={`border ${th.border} rounded-2xl ${th.surface} p-4`}>
-        <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest mb-3`}>{T.sequence}</h2>
-        <div className="flex flex-wrap gap-1.5 items-center">
-          {seq.map((b, i) => (
-            <button key={i} onClick={() => goTo(i)}
-              title={b.task ?? blockLabels[b.type]}
-              className={`rounded-full transition-all duration-200 ${
-                i === cur ? "w-6 h-3 opacity-100" : "w-2 h-2 opacity-40 hover:opacity-75"
-              } ${b.type === "work" ? "bg-amber-400" : "bg-emerald-400"}`}
-            />
-          ))}
-        </div>
-      </section>
+      {(() => {
+        const TASK_COLORS = [
+          "bg-amber-400", "bg-blue-400", "bg-emerald-400", "bg-purple-400",
+          "bg-rose-400", "bg-orange-400", "bg-cyan-400", "bg-pink-400",
+        ];
+        const taskColorMap = new Map();
+        const taskCount   = new Map();
+        let colorIdx = 0;
+        for (const b of seq) {
+          if (b.type === "work" && b.task) {
+            if (!taskColorMap.has(b.task)) taskColorMap.set(b.task, colorIdx++ % TASK_COLORS.length);
+            taskCount.set(b.task, (taskCount.get(b.task) ?? 0) + 1);
+          }
+        }
+        const uniqueTasks = [...taskColorMap.entries()];
+        return (
+          <section className={`border ${th.border} rounded-2xl ${th.surface} p-4`}>
+            <h2 className={`text-xs font-mono ${th.textSub} uppercase tracking-widest mb-3`}>{T.sequence}</h2>
+            <div className="flex flex-wrap gap-1.5 items-center mb-3">
+              {seq.map((b, i) => {
+                const dotColor = b.type === "work"
+                  ? TASK_COLORS[taskColorMap.get(b.task) ?? 0]
+                  : "bg-zinc-500";
+                return (
+                  <button key={i} onClick={() => goTo(i)}
+                    title={b.task ?? blockLabels[b.type]}
+                    className={`rounded-full transition-all duration-200 ${
+                      i === cur ? "w-6 h-3 opacity-100" : "w-2 h-2 opacity-40 hover:opacity-75"
+                    } ${dotColor}`}
+                  />
+                );
+              })}
+            </div>
+            {uniqueTasks.length > 1 && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {uniqueTasks.map(([name, ci]) => (
+                  <div key={name} className="flex items-center gap-1.5">
+                    <div className={`w-2 h-2 rounded-full ${TASK_COLORS[ci]}`} />
+                    <span className={`text-[10px] font-mono ${th.textMuted} truncate max-w-[120px]`}>{name} ({taskCount.get(name)})</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })()}
 
       </> }
 

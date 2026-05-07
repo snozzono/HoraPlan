@@ -196,11 +196,11 @@ function DraggableBlock({ block, startHour, colIdx, totalCols, isEditing, onDele
             }}
           />
         ) : (
-          <span className="flex-1 text-[11px] font-mono truncate cursor-pointer leading-tight" onDoubleClick={onStartEdit}>
+          <span className="flex-1 text-[11px] font-mono truncate cursor-pointer leading-tight" onClick={onStartEdit}>
             {block.name || "···"}
           </span>
         )}
-        <button onClick={e => { e.stopPropagation(); onDelete(); }} className="shrink-0 text-xs opacity-30 hover:opacity-80 leading-none ml-0.5">×</button>
+        <button onClick={e => { e.stopPropagation(); onDelete(); }} className="shrink-0 opacity-30 hover:opacity-80 leading-none ml-0.5 px-1 py-0.5 text-xs">×</button>
       </div>
       {height > SLOT_H * 2 && (
         <span className="text-[9px] font-mono opacity-40 leading-none px-0.5">{fmtDur(duration)}</span>
@@ -215,10 +215,10 @@ function DraggableBlock({ block, startHour, colIdx, totalCols, isEditing, onDele
       {/* Handle de resize */}
       <div
         onPointerDown={handleResizeStart}
-        className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize flex items-center justify-center opacity-0 hover:opacity-60 transition-opacity"
+        className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize flex items-center justify-center opacity-30 sm:opacity-0 sm:hover:opacity-60 transition-opacity touch-none"
         title="Arrastra para cambiar duración"
       >
-        <div className="w-5 h-0.5 rounded-full bg-current" />
+        <div className="w-6 h-0.5 rounded-full bg-current" />
       </div>
     </div>
   );
@@ -246,7 +246,7 @@ function DraggableTask({ task, colorIdx, minutes, idx }) {
 }
 
 // ── Vista principal ────────────────────────────────────────────────────────
-export default function TimeBlockView({ th, tasks = [], plan = [], onScheduledTasksChange }) {
+export default function TimeBlockView({ th, tasks = [], plan = [], onScheduledTasksChange, onPomodoro }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 15000);
@@ -259,8 +259,9 @@ export default function TimeBlockView({ th, tasks = [], plan = [], onScheduledTa
     try { return JSON.parse(localStorage.getItem("timeBlocks")) || []; }
     catch { return []; }
   });
-  const [viewMode, setViewMode]           = useState("weekly");
-  const [dayCount, setDayCount]           = useState(5);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+  const [viewMode, setViewMode]           = useState(isMobile ? "daily" : "weekly");
+  const [dayCount, setDayCount]           = useState(isMobile ? 1 : 5);
   const [offset, setOffset]               = useState(0);
   const [editingId, setEditingId]         = useState(null);
   const [activeDrag, setActiveDrag]       = useState(null);
@@ -395,11 +396,11 @@ export default function TimeBlockView({ th, tasks = [], plan = [], onScheduledTa
     >
       <div className="space-y-3">
 
-        {/* Controles — fila 1: navegación */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Controles — fila 1: lo esencial */}
+        <div className="flex items-center gap-2">
           {/* View toggle */}
           <div className={`flex rounded-lg border ${th.toggleBorder} overflow-hidden`}>
-            {[["daily", locale === "en-US" ? "Day" : "Día"], ["weekly", locale === "en-US" ? "Week" : "Semana"]].map(([v, l]) => (
+            {[["daily", locale === "en-US" ? "Day" : "Día"], ["weekly", locale === "en-US" ? "Week" : "Sem"]].map(([v, l]) => (
               <button key={v} onClick={() => { setViewMode(v); setOffset(0); }}
                 className={`text-xs font-mono px-3 py-1.5 transition-colors ${
                   viewMode === v
@@ -410,6 +411,36 @@ export default function TimeBlockView({ th, tasks = [], plan = [], onScheduledTa
             ))}
           </div>
 
+          {/* Navegación */}
+          <div className={`flex items-center rounded-lg border ${th.toggleBorder} overflow-hidden`}>
+            <button onClick={() => setOffset(o => o - 1)}
+              className={`w-8 h-8 ${th.textToggle} hover:bg-amber-400/10 flex items-center justify-center transition-colors`}
+            >‹</button>
+            <button onClick={() => setOffset(0)}
+              className={`px-2 h-8 text-[10px] font-mono ${th.textToggle} hover:bg-amber-400/10 transition-colors border-x ${th.toggleBorder}`}
+            >{locale === "en-US" ? "today" : "hoy"}</button>
+            <button onClick={() => setOffset(o => o + 1)}
+              className={`w-8 h-8 ${th.textToggle} hover:bg-amber-400/10 flex items-center justify-center transition-colors`}
+            >›</button>
+          </div>
+
+          <span className={`text-[11px] font-mono ${th.textMuted} capitalize`}>{periodLabel}</span>
+
+          <div className="flex-1" />
+
+          {/* Ir a Pomodoro */}
+          {onPomodoro && (
+            <button
+              onClick={onPomodoro}
+              className="flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 active:scale-95 text-zinc-950 font-bold transition-all duration-150"
+            >
+              🍅<span className="hidden sm:inline"> Pomodoro</span>
+            </button>
+          )}
+        </div>
+
+        {/* Controles — fila 2: secundarios */}
+        <div className="flex items-center gap-2">
           {/* Días visibles (solo semanal) */}
           {viewMode === "weekly" && (
             <div className={`flex items-center rounded-lg border ${th.toggleBorder} overflow-hidden`}>
@@ -422,22 +453,6 @@ export default function TimeBlockView({ th, tasks = [], plan = [], onScheduledTa
               >+</button>
             </div>
           )}
-
-          {/* Navegación */}
-          <div className={`flex items-center rounded-lg border ${th.toggleBorder} overflow-hidden`}>
-            <button onClick={() => setOffset(o => o - 1)}
-              className={`w-8 h-8 ${th.textToggle} hover:bg-amber-400/10 flex items-center justify-center transition-colors`}
-            >‹</button>
-            <button onClick={() => setOffset(0)}
-              className={`px-2 h-8 text-[10px] font-mono ${th.textToggle} hover:bg-amber-400/10 transition-colors border-x ${th.toggleBorder}`}
-              title={locale === "en-US" ? "Go to today" : "Ir a hoy"}
-            >{locale === "en-US" ? "today" : "hoy"}</button>
-            <button onClick={() => setOffset(o => o + 1)}
-              className={`w-8 h-8 ${th.textToggle} hover:bg-amber-400/10 flex items-center justify-center transition-colors`}
-            >›</button>
-          </div>
-
-          <span className={`text-[11px] font-mono ${th.textMuted} capitalize`}>{periodLabel}</span>
 
           <div className="flex-1" />
 
