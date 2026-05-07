@@ -85,13 +85,13 @@ function buildCanvas(plan, dark, T) {
 
   ctx.fillStyle = MUTED;
   ctx.font      = `11px ${MONO}`;
-  const foot    = "horaplan — snozz";
+  const foot    = "HoraPlan";
   ctx.fillText(foot, W - PAD - ctx.measureText(foot).width, H - 12);
 
   return canvas;
 }
 
-export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, onPomodoro, T }) {
+export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, onPomodoro, onCalendar, T }) {
   if (!plan.length) return null;
 
   const [editIdx, setEditIdx] = useState(null);
@@ -196,7 +196,7 @@ export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, o
                 />
               </div>
               <div className={`flex gap-3 mt-1 text-xs font-mono ${th.textMuted}`}>
-                <span>{T.priority} {item.priority === Infinity ? "∞" : item.priority.toFixed(2)}</span>
+                <span>{T.priority} {item.priority == null || item.priority === Infinity ? "∞" : item.priority.toFixed(2)}</span>
                 <span>·</span>
                 <span>
                   {item.timeLeft}h
@@ -209,7 +209,13 @@ export default function PlanResult({ plan, onPlanChange, onEditTask, th, dark, o
         })}
       </div>
 
-      <div className="flex justify-end mt-3">
+      <div className="flex justify-end gap-2 mt-3">
+        <button
+          onClick={onCalendar}
+          className={`text-xs font-mono border ${th.toggleBorder} ${th.textToggle} px-3 py-1.5 rounded-lg transition-colors hover:bg-amber-400/10`}
+        >
+          {T.calendarBtn}
+        </button>
         <button
           onClick={onPomodoro}
           className={`text-xs font-mono border ${th.toggleBorder} ${th.textToggle} px-3 py-1.5 rounded-lg transition-colors hover:bg-amber-400/10`}

@@ -94,9 +94,13 @@ export const ES = {
   sessionComplete: "¡Sesión completada! 🎉",
   completedSessions: (n) => `${"🍅".repeat(Math.min(n, 8))}${n > 8 ? ` ×${n}` : ""} completado${n > 1 ? "s" : ""}`,
   duration: "Duración",
+  breakMin: "Descanso (min)",
   whatWorkOn: "¿En qué vas a trabajar? (opcional)",
   freeLabel: (name) => name.trim() || "Pomodoro libre",
   sessionDoneTitle: "✅ ¡Listo!",
+  confirmClearAll: "¿Borrar todas las tareas y el plan?",
+  planOutdated: "Tareas modificadas — regenera el plan",
+  calendarBtn: "📅 calendario",
 };
 
 export const EN = {
@@ -195,7 +199,11 @@ export const EN = {
   sessionComplete: "Session complete! 🎉",
   completedSessions: (n) => `${"🍅".repeat(Math.min(n, 8))}${n > 8 ? ` ×${n}` : ""} completed`,
   duration: "Duration",
+  breakMin: "Break (min)",
   whatWorkOn: "What will you work on? (optional)",
   freeLabel: (name) => name.trim() || "Free pomodoro",
   sessionDoneTitle: "✅ Done!",
+  confirmClearAll: "Clear all tasks and the plan?",
+  planOutdated: "Tasks changed — regenerate the plan",
+  calendarBtn: "📅 calendar",
 };

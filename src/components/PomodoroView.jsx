@@ -1,42 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { buildSequence } from "../lib/sequence";
 
 const PRESETS = {
   standard: { work: 25, shortBreak: 5,  longBreak: 15, longBreakEvery: 4 },
   beast:    { work: 0,  shortBreak: 0,  longBreak: 0,  longBreakEvery: 0 },
 };
-
-function buildSequence(plan, cfg) {
-  if (cfg.preset === "beast") {
-    return plan.map(t => ({ type: "work", task: t.name, duration: t.minutes * 60 }));
-  }
-  const workSec = cfg.work * 60;
-  const sbSec   = cfg.shortBreak * 60;
-  const lbSec   = cfg.longBreak  * 60;
-  const blocks  = [];
-
-  for (const t of plan) {
-    let rem = t.minutes * 60;
-    while (rem > 0) {
-      const dur = workSec > 0 ? Math.min(rem, workSec) : rem;
-      blocks.push({ type: "work", task: t.name, duration: dur });
-      rem -= dur;
-      if (workSec <= 0) break;
-    }
-  }
-
-  const seq = [];
-  for (let i = 0; i < blocks.length; i++) {
-    seq.push(blocks[i]);
-    if (i < blocks.length - 1) {
-      const n = i + 1;
-      if (cfg.longBreakEvery > 0 && n % cfg.longBreakEvery === 0 && lbSec > 0)
-        seq.push({ type: "longBreak",  task: null, duration: lbSec });
-      else if (sbSec > 0)
-        seq.push({ type: "shortBreak", task: null, duration: sbSec });
-    }
-  }
-  return seq;
-}
 
 function fmt(s) {
   return `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
@@ -75,10 +43,14 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
   const [cur, setCur]           = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
   const [running, setRunning]   = useState(false);
-  const [freeMode, setFreeMode] = useState(false);
+  const [freeMode, setFreeMode] = useState(() => localStorage.getItem("pom_mode") === "libre");
 
   const stateRef   = useRef({ seq: [], cur: 0, timeLeft: 0 });
   stateRef.current = { seq, cur, timeLeft };
+
+  useEffect(() => {
+    localStorage.setItem("pom_mode", freeMode ? "libre" : "plan");
+  }, [freeMode]);
 
   const blockEndRef = useRef(null);
 
@@ -302,6 +274,11 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
                 />
               </div>
             ))}
+            {cfg.work === 0 && (
+              <p className="text-xs font-mono text-amber-500">
+                Work = 0 min → modo beast (sin descansos)
+              </p>
+            )}
           </div>
         )}
         </div>
@@ -389,24 +366,48 @@ export default function PomodoroView({ plan, planHistory = [], onLoadPlan, onDel
 }
 
 function FreePomodoro({ th, T }) {
-  const [name, setName]         = useState("");
-  const [duration, setDuration] = useState(25);
-  const [timeLeft, setTimeLeft] = useState(25 * 60);
-  const [running, setRunning]   = useState(false);
-  const [done, setDone]         = useState(false);
-  const [sessions, setSessions] = useState(0);
+  const [name, setName]                   = useState("");
+  const [duration, setDuration]           = useState(() => {
+    const v = parseInt(localStorage.getItem("libre_duration"));
+    return isNaN(v) ? 25 : v;
+  });
+  const [breakDuration, setBreakDuration] = useState(() => {
+    const v = parseInt(localStorage.getItem("libre_break"));
+    return isNaN(v) ? 5 : v;
+  });
+  const [phase, setPhase]                 = useState("work"); // "work" | "break"
+  const [timeLeft, setTimeLeft]           = useState(25 * 60);
+  const [running, setRunning]             = useState(false);
+  const [done, setDone]                   = useState(false);
+  const [sessions, setSessions]           = useState(0);
 
-  const blockEndRef = useRef(null);
-  const nameRef     = useRef("");
-  nameRef.current   = name;
+  const blockEndRef   = useRef(null);
+  const nameRef       = useRef("");
+  nameRef.current     = name;
+  const phaseRef      = useRef("work");
+  phaseRef.current    = phase;
+  const durationRef   = useRef(25);
+  durationRef.current = duration;
+  const breakDurRef   = useRef(5);
+  breakDurRef.current = breakDuration;
+
+  useEffect(() => { localStorage.setItem("libre_duration", duration); }, [duration]);
+  useEffect(() => { localStorage.setItem("libre_break", breakDuration); }, [breakDuration]);
 
   useEffect(() => {
-    if (!running) {
+    if (!running && phase === "work") {
       setTimeLeft(duration * 60);
       setDone(false);
       blockEndRef.current = null;
     }
   }, [duration]);
+
+  useEffect(() => {
+    if (!running && phase === "break") {
+      setTimeLeft(breakDuration * 60);
+      blockEndRef.current = null;
+    }
+  }, [breakDuration]);
 
   useEffect(() => {
     if (running) {
@@ -444,21 +445,42 @@ function FreePomodoro({ th, T }) {
       if (!blockEndRef.current) return;
       const rem = Math.ceil((blockEndRef.current - Date.now()) / 1000);
       if (rem > 0) {
-        const label = T.freeLabel(nameRef.current);
-        document.title = `🍅 ${fmt(rem)} — ${label}`;
+        const isWork = phaseRef.current === "work";
+        document.title = `${isWork ? "🍅" : "☕"} ${fmt(rem)} — ${isWork ? T.freeLabel(nameRef.current) : T.shortBreak}`;
         setTimeLeft(rem);
         return;
       }
-      const label = T.freeLabel(nameRef.current);
-      playSound("done");
-      setSessions(s => s + 1);
-      setRunning(false);
-      setDone(true);
-      blockEndRef.current = null;
-      setTimeLeft(0);
-      document.title = `${T.sessionDoneTitle} — ${label}`;
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(T.sessionComplete, { body: label, icon: "/favicon.svg" });
+
+      if (phaseRef.current === "work") {
+        if (breakDurRef.current === 0) {
+          playSound("done");
+          setSessions(s => s + 1);
+          setRunning(false);
+          setDone(true);
+          setPhase("work");
+          setTimeLeft(durationRef.current * 60);
+          blockEndRef.current = null;
+          document.title = `${T.sessionDoneTitle} — ${T.freeLabel(nameRef.current)}`;
+          if ("Notification" in window && Notification.permission === "granted")
+            new Notification(T.sessionComplete, { body: T.freeLabel(nameRef.current), icon: "/favicon.svg" });
+        } else {
+          playSound("break");
+          const bSec = breakDurRef.current * 60;
+          setPhase("break");
+          setTimeLeft(bSec);
+          blockEndRef.current = Date.now() + bSec * 1000;
+        }
+      } else {
+        playSound("done");
+        setSessions(s => s + 1);
+        setRunning(false);
+        setDone(true);
+        setPhase("work");
+        setTimeLeft(durationRef.current * 60);
+        blockEndRef.current = null;
+        document.title = `${T.sessionDoneTitle} — ${T.freeLabel(nameRef.current)}`;
+        if ("Notification" in window && Notification.permission === "granted")
+          new Notification(T.sessionComplete, { body: T.freeLabel(nameRef.current), icon: "/favicon.svg" });
       }
     }, 500);
     return () => clearInterval(id);
@@ -466,77 +488,128 @@ function FreePomodoro({ th, T }) {
 
   function reset() {
     setRunning(false);
+    setPhase("work");
     setTimeLeft(duration * 60);
     setDone(false);
     blockEndRef.current = null;
   }
 
-  const totalSec = duration * 60;
-  const pct = totalSec > 0
+  function skip() {
+    if (phase === "work") {
+      if (breakDuration === 0) {
+        setRunning(false);
+        setSessions(s => s + 1);
+        setDone(true);
+        setPhase("work");
+        setTimeLeft(duration * 60);
+        blockEndRef.current = null;
+      } else {
+        playSound("break");
+        const bSec = breakDuration * 60;
+        setPhase("break");
+        setTimeLeft(bSec);
+        blockEndRef.current = running ? Date.now() + bSec * 1000 : null;
+      }
+    } else {
+      playSound("done");
+      setRunning(false);
+      setSessions(s => s + 1);
+      setDone(true);
+      setPhase("work");
+      setTimeLeft(duration * 60);
+      blockEndRef.current = null;
+    }
+  }
+
+  const isWork   = phase === "work";
+  const totalSec = isWork ? duration * 60 : breakDuration * 60;
+  const pct      = totalSec > 0
     ? ((totalSec - (timeLeft > 0 ? timeLeft : 0)) / totalSec) * 100
     : 0;
 
   return (
     <div className="space-y-4">
       <section className={`border ${th.planBorder} rounded-2xl ${th.planBg} p-5`}>
-      {sessions > 0 && (
-        <p className={`text-xs font-mono ${th.textMuted} text-center mb-3`}>
-          {T.completedSessions(sessions)}
-        </p>
-      )}
+        {sessions > 0 && (
+          <p className={`text-xs font-mono ${th.textMuted} text-center mb-3`}>
+            {T.completedSessions(sessions)}
+          </p>
+        )}
 
-      <input
-        type="text"
-        placeholder={T.whatWorkOn}
-        value={name}
-        onChange={e => setName(e.target.value)}
-        disabled={running}
-        className={`w-full mb-4 border ${th.inputBorder} ${th.inputBg} ${th.inputText} ${th.inputPlaceholder} ${th.inputFocus} rounded-xl px-4 py-2.5 text-sm outline-none transition-colors font-mono disabled:opacity-50`}
-      />
-
-      <div className="mb-5">
-        <div className="flex justify-between mb-1">
-          <span className={`text-xs font-mono ${th.textLabel}`}>{T.duration}</span>
-          <span className={`text-xs font-mono ${th.textAccent}`}>{duration} min</span>
-        </div>
         <input
-          type="range" min={5} max={120} step={5}
-          value={duration}
-          onChange={e => { if (!running) setDuration(Number(e.target.value)); }}
+          type="text"
+          placeholder={T.whatWorkOn}
+          value={name}
+          onChange={e => setName(e.target.value)}
           disabled={running}
-          className="w-full accent-amber-400 disabled:opacity-50"
+          className={`w-full mb-4 border ${th.inputBorder} ${th.inputBg} ${th.inputText} ${th.inputPlaceholder} ${th.inputFocus} rounded-xl px-4 py-2.5 text-sm outline-none transition-colors font-mono disabled:opacity-50`}
         />
-      </div>
 
-      {done && (
-        <p className="text-sm font-mono text-emerald-400 text-center mb-3">{T.sessionComplete}</p>
-      )}
+        <div className="mb-3">
+          <div className="flex justify-between mb-1">
+            <span className={`text-xs font-mono ${th.textLabel}`}>{T.duration}</span>
+            <span className={`text-xs font-mono ${th.textAccent}`}>{duration} min</span>
+          </div>
+          <input
+            type="range" min={5} max={120} step={5}
+            value={duration}
+            onChange={e => { if (!running) setDuration(Number(e.target.value)); }}
+            disabled={running}
+            className="w-full accent-amber-400 disabled:opacity-50"
+          />
+        </div>
 
-      <div className="font-mono text-7xl font-bold text-amber-400 tabular-nums tracking-widest text-center mb-6">
-        {fmt(timeLeft)}
-      </div>
+        <div className="mb-5">
+          <div className="flex justify-between mb-1">
+            <span className={`text-xs font-mono ${th.textLabel}`}>{T.breakMin}</span>
+            <span className="text-xs font-mono text-emerald-400">{breakDuration} min</span>
+          </div>
+          <input
+            type="range" min={0} max={30} step={1}
+            value={breakDuration}
+            onChange={e => { if (!running) setBreakDuration(Number(e.target.value)); }}
+            disabled={running}
+            className="w-full accent-emerald-400 disabled:opacity-50"
+          />
+        </div>
 
-      <div className="flex justify-center gap-3 mb-5">
-        <button
-          onClick={reset}
-          className={`w-10 h-10 rounded-xl border ${th.toggleBorder} ${th.textToggle} transition-colors text-lg`}
-        >↺</button>
-        <button
-          onClick={() => { setDone(false); setRunning(v => !v); }}
-          className="w-14 h-10 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 text-zinc-950 font-bold text-xl transition-all"
-        >
-          {running ? "⏸" : "▶"}
-        </button>
-      </div>
+        {done && (
+          <p className="text-sm font-mono text-emerald-400 text-center mb-3">{T.sessionComplete}</p>
+        )}
 
-      <div className={`w-full h-1.5 ${th.planBarBg} rounded-full overflow-hidden mt-1`}>
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+        <p className={`text-xs font-mono text-center mb-1 ${isWork ? "text-amber-400/60" : "text-emerald-400/60"}`}>
+          {isWork ? `🍅 ${T.work}` : `☕ ${T.shortBreak}`}
+        </p>
 
-      <p className={`text-xs font-mono ${th.textMuted} text-center mt-3`}>{T.spacePlayPause}</p>
+        <div className={`font-mono text-7xl font-bold tabular-nums tracking-widest text-center mb-6 ${isWork ? "text-amber-400" : "text-emerald-400"}`}>
+          {fmt(timeLeft)}
+        </div>
+
+        <div className="flex justify-center gap-3 mb-5">
+          <button
+            onClick={reset}
+            className={`w-10 h-10 rounded-xl border ${th.toggleBorder} ${th.textToggle} transition-colors text-lg`}
+          >↺</button>
+          <button
+            onClick={() => { setDone(false); setRunning(v => !v); }}
+            className="w-14 h-10 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 text-zinc-950 font-bold text-xl transition-all"
+          >
+            {running ? "⏸" : "▶"}
+          </button>
+          <button
+            onClick={skip}
+            className={`w-10 h-10 rounded-xl border ${th.toggleBorder} ${th.textToggle} transition-colors text-lg`}
+          >⏭</button>
+        </div>
+
+        <div className={`w-full h-1.5 ${th.planBarBg} rounded-full overflow-hidden mt-1`}>
+          <div
+            className={`h-full rounded-full bg-gradient-to-r transition-all duration-500 ${isWork ? "from-amber-500 to-amber-300" : "from-emerald-500 to-emerald-300"}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+
+        <p className={`text-xs font-mono ${th.textMuted} text-center mt-3`}>{T.spacePlayPause}</p>
       </section>
 
       <section className={`border ${th.border} rounded-2xl ${th.surfaceDev} p-4`}>
